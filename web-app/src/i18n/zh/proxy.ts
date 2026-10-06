@@ -220,4 +220,6 @@ export const proxy: Record<string, string> = {
   'Use the subscription’s own rules and groups': '使用订阅自带的规则与分组',
   'Recommended for providers that serve a complete Clash/mihomo config. Turn off to use only its nodes with the managed rules.':
     '适用于提供完整 Clash/mihomo 配置的服务商（推荐）。关闭后只使用其中的节点，规则由面板托管。',
+  'Forwarding OK': '转发正常',
+  'Not forwarding': '转发异常',
 }

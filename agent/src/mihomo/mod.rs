@@ -38,6 +38,9 @@ const TUN_CRASH_LIMIT: usize = 3;
 const BACKOFF_MAX: Duration = Duration::from_secs(300);
 /// Minimum gap between automatic profile downloads after a failure.
 const PROFILE_RETRY: Duration = Duration::from_secs(1800);
+/// Forwarding health check: interval and consecutive failures before acting.
+const PROBE_EVERY: Duration = Duration::from_secs(60);
+const PROBE_FAILURES: u32 = 3;
 const GROUP_TYPES: &[&str] = &["Selector", "URLTest", "Fallback", "LoadBalance", "Relay"];
 
 pub struct Manager {
@@ -58,6 +61,25 @@ struct Inner {
     traffic: Option<(Instant, u64, u64)>,
     firewall_checked: Option<Instant>,
     profile_attempt: Option<Instant>,
+    health: Health,
+}
+
+/// Is mihomo still forwarding? (A live process can hang with the TUN up,
+/// which would cut every LAN client off.)
+#[derive(Default)]
+struct Health {
+    checked: Option<Instant>,
+    ok: Option<bool>,
+    failures: u32,
+    /// A restart was already tried for the current run of failures.
+    restarted: bool,
+}
+
+enum Probe {
+    Ok,
+    /// The direct path failed too: the WAN is down, not mihomo.
+    WanDown,
+    Failed,
 }
 
 fn bad(msg: impl Into<String>) -> (u16, Value) {
@@ -162,6 +184,7 @@ impl Manager {
                 traffic: None,
                 firewall_checked: None,
                 profile_attempt: None,
+                health: Health::default(),
             }),
         }
     }
@@ -181,6 +204,17 @@ impl Manager {
             let mut ticks: u64 = 0;
             loop {
                 me.lock().tick();
+                // Probe without holding the lock: it can take several seconds.
+                if let Some(proxy) = me.lock().probe_due() {
+                    let probe = if service::probe_204(Some(&proxy)) {
+                        Probe::Ok
+                    } else if !service::probe_204(None) {
+                        Probe::WanDown
+                    } else {
+                        Probe::Failed
+                    };
+                    me.lock().probe_result(probe);
+                }
                 if let Some(sub) = me.lock().profile_due() {
                     if let Err(e) = me.refresh_profile(&sub) {
                         eprintln!("[mihomo] scheduled profile update failed: {e}");
@@ -240,6 +274,77 @@ impl Inner {
     fn profile_sub(&self) -> Option<&Subscription> {
         let id = self.state.settings.profile.as_deref()?;
         self.state.subscriptions.iter().find(|s| s.id == id)
+    }
+
+    /// The mixed-port proxy URL when a forwarding check is due.
+    fn probe_due(&mut self) -> Option<String> {
+        if !self.alive() {
+            self.health = Health::default();
+            return None;
+        }
+        if self
+            .health
+            .checked
+            .is_some_and(|t| t.elapsed() < PROBE_EVERY)
+        {
+            return None;
+        }
+        // Let a fresh process load its rule sets before judging it.
+        if self
+            .process
+            .as_ref()
+            .is_some_and(|p| p.started.elapsed() < Duration::from_secs(30))
+        {
+            return None;
+        }
+        self.health.checked = Some(Instant::now());
+        let ip = lan_ip().ok()?;
+        Some(format!("http://{ip}:{}", self.state.settings.mixed_port))
+    }
+
+    fn probe_result(&mut self, probe: Probe) {
+        match probe {
+            Probe::Ok => {
+                self.health.ok = Some(true);
+                self.health.failures = 0;
+                self.health.restarted = false;
+            }
+            Probe::WanDown => self.health.ok = None,
+            Probe::Failed => {
+                self.health.ok = Some(false);
+                self.health.failures += 1;
+                if self.health.failures < PROBE_FAILURES || !self.alive() {
+                    return;
+                }
+                self.health.failures = 0;
+                if !self.health.restarted {
+                    eprintln!("[mihomo] not forwarding traffic; restarting");
+                    self.health.restarted = true;
+                    self.restarts += 1;
+                    if let Err(e) = self.restart() {
+                        self.last_error = Some(e);
+                    } else {
+                        self.last_error =
+                            Some("mihomo stopped forwarding traffic and was restarted".into());
+                    }
+                } else if self.state.settings.tun {
+                    eprintln!("[mihomo] still not forwarding after a restart; turning TUN off");
+                    let mut next = self.state.clone();
+                    next.settings.tun = false;
+                    match self.apply(next) {
+                        Ok(()) => {
+                            self.notice = Some(
+                                "TUN was turned off because mihomo stopped forwarding traffic even after a restart. \
+                                 Devices use the normal route again; the proxy port still works."
+                                    .into(),
+                            )
+                        }
+                        Err(e) => self.last_error = Some(e),
+                    }
+                    self.health.restarted = false;
+                }
+            }
+        }
     }
 
     /// The profile subscription when its auto-update interval has elapsed.
@@ -524,6 +629,10 @@ impl Inner {
             "subscriptions": self.state.subscriptions.len(),
             "traffic": traffic,
             "route": route,
+            "health": {
+                "ok": self.health.ok,
+                "checked_secs_ago": self.health.checked.map(|t| t.elapsed().as_secs()),
+            },
             "restarts": self.restarts,
             "last_error": self.last_error,
             "notice": self.notice,
@@ -1252,6 +1361,46 @@ mod tests {
     }
 
     #[test]
+    fn health_counts_only_mihomo_failures() {
+        let m = Manager {
+            inner: Mutex::new(Inner {
+                state: State::default(),
+                process: None,
+                version: None,
+                restarts: 0,
+                crashes: VecDeque::new(),
+                backoff: Duration::from_secs(5),
+                retry_at: None,
+                last_error: None,
+                notice: None,
+                sub_errors: HashMap::new(),
+                traffic: None,
+                firewall_checked: None,
+                profile_attempt: None,
+                health: Health::default(),
+            }),
+        };
+        let mut inner = m.lock();
+        inner.probe_result(Probe::Failed);
+        inner.probe_result(Probe::WanDown);
+        assert_eq!(
+            inner.health.failures, 1,
+            "a WAN outage is not mihomo's fault"
+        );
+        assert_eq!(inner.health.ok, None);
+        inner.probe_result(Probe::Failed);
+        assert_eq!(inner.health.ok, Some(false));
+        inner.probe_result(Probe::Ok);
+        assert_eq!(inner.health.failures, 0);
+        assert_eq!(inner.health.ok, Some(true));
+        // Without a running process nothing is restarted.
+        for _ in 0..5 {
+            inner.probe_result(Probe::Failed);
+        }
+        assert_eq!(inner.restarts, 0);
+    }
+
+    #[test]
     fn iso8601_formats_utc() {
         assert_eq!(iso8601(0), "1970-01-01T00:00:00Z");
         assert_eq!(iso8601(1_791_331_200), "2026-10-07T00:00:00Z");
@@ -1270,6 +1419,27 @@ mod device_tests {
         println!("{label}: {status} {body}");
         assert!(status < 300, "{label} failed: {body}");
         body["data"].clone()
+    }
+
+    /// Set the persistent TUN switch from `E2E_TUN=on|off` (the dashboard's
+    /// toggle, for operators without a session).
+    #[test]
+    #[ignore = "changes the TUN setting on a real U60 Pro"]
+    fn device_set_tun() {
+        let on = match std::env::var("E2E_TUN").as_deref() {
+            Ok("on") => true,
+            Ok("off") => false,
+            _ => panic!("set E2E_TUN=on or E2E_TUN=off"),
+        };
+        let m = Manager::new();
+        let (code, v) = m.settings_set(json!({ "tun": on }).to_string().as_bytes());
+        println!(
+            "tun={on}: {code} tun_active={} error={}",
+            v["data"]["tun_active"], v["error"]
+        );
+        assert!(code < 300);
+        assert_eq!(service::tun_active(), on);
+        assert_eq!(service::firewall_present(), on);
     }
 
     /// Turn TUN on for `E2E_HOLD_SECS` (default 60) so LAN clients can be

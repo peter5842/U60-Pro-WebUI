@@ -516,6 +516,8 @@ export interface ProxyStatus {
   route?: string[]
   /** Set when a subscription's own config (groups and rules) is in use. */
   profile?: { id: string; name: string }
+  /** Forwarding check through mihomo (undefined: not checked yet or the WAN is down). */
+  health?: { ok?: boolean; checked_secs_ago?: number }
   restarts: number
   last_error?: string
   notice?: string

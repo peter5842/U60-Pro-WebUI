@@ -29,6 +29,8 @@ test('status mapper validates fields and flattens the selected route', () => {
   assert.deepEqual(s.route, ['节点选择', '自动选择', 'HK 01'])
   assert.equal(view.currentRoute(s), '节点选择 → 自动选择 → HK 01')
   assert.deepEqual(s.profile, { id: 'a1b2c3d4', name: 'Main' })
+  assert.deepEqual(map.mapProxyStatus({ health: { ok: false, checked_secs_ago: 7 } }).health, { ok: false, checked_secs_ago: 7 })
+  assert.deepEqual(map.mapProxyStatus({ health: { ok: null } }).health, { ok: undefined, checked_secs_ago: undefined })
   assert.equal(map.mapProxyStatus({ profile: { id: 'x' }, route: { chain: [] } }).profile, undefined)
   assert.equal(map.mapProxyStatus({ route: { chain: [] } }).route, undefined)
   assert.equal(s.last_error, undefined)

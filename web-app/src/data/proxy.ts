@@ -58,6 +58,9 @@ export function mapProxyStatus(d: Record<string, unknown>): ProxyStatus {
     traffic: mapTraffic(d.traffic),
     route: route?.length ? route : undefined,
     profile,
+    health: isObj(d.health)
+      ? { ok: boolLike(d.health.ok), checked_secs_ago: nonNegativeInt(d.health.checked_secs_ago) }
+      : undefined,
     restarts: nonNegativeInt(d.restarts) ?? 0,
     last_error: nonEmptyStr(d.last_error),
     notice: nonEmptyStr(d.notice),

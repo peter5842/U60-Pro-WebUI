@@ -340,6 +340,39 @@ pub fn truncate_log_if_large() {
     }
 }
 
+/// Mainland endpoints that answer 204; rule presets and typical provider
+/// configs send them DIRECT, so a failure through mihomo means mihomo itself
+/// stopped forwarding rather than a node being down.
+const PROBE_URLS: &[&str] = &[
+    "http://connectivitycheck.platform.hicloud.com/generate_204",
+    "http://connect.rom.miui.com/generate_204",
+];
+
+/// One HTTP 204 check, through `proxy` (e.g. `http://192.168.0.1:7890`) or direct.
+pub fn probe_204(proxy: Option<&str>) -> bool {
+    PROBE_URLS.iter().any(|url| {
+        let mut cmd = Command::new("/usr/bin/curl");
+        cmd.args([
+            "--silent",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}",
+            "--max-time",
+            "5",
+        ]);
+        if let Some(p) = proxy {
+            cmd.args(["--proxy", p]);
+        } else {
+            cmd.arg("--noproxy").arg("*");
+        }
+        cmd.arg(url);
+        process_runner::output(&mut cmd, None, Duration::from_secs(8), 1024)
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "204")
+            .unwrap_or(false)
+    })
+}
+
 /// True once `ip` is assigned locally, i.e. mihomo can bind its listener.
 pub fn address_ready(ip: &str) -> bool {
     std::net::TcpListener::bind((ip, 0)).is_ok()

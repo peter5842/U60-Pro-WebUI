@@ -115,6 +115,8 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               <Chip tone={state.tone}>{state.label}</Chip>
               {s.tun_active && <Chip tone="accent">TUN</Chip>}
+              {s.running && s.health?.ok === true && <Chip tone="ok">{t('Forwarding OK')}</Chip>}
+              {s.running && s.health?.ok === false && <Chip tone="danger">{t('Not forwarding')}</Chip>}
             </div>
           </div>
           <div className="col-span-2 min-w-0 sm:col-span-1">
