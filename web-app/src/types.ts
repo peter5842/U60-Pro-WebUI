@@ -210,10 +210,25 @@ export interface WifiBand {
   clients?: number
 }
 
+export interface GuestWifi {
+  ssid?: string
+  enabled_2g: boolean
+  enabled_5g: boolean
+  security?: string
+  has_key: boolean
+  hidden: boolean
+  /** Minutes until the firmware turns the network off again; 0 = no limit. */
+  active_minutes?: number
+  /** Seconds left on a running timer. */
+  left_secs?: number
+}
+
 export interface WifiAll {
   band_2g: WifiBand
   band_5g: WifiBand
   guest_ssid?: string
+  /** Absent when the firmware reports no guest network. */
+  guest?: GuestWifi
   master_supported: boolean
   master_enabled: boolean
   wifi6_supported: boolean

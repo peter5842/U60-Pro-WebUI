@@ -83,7 +83,7 @@ export interface DraftErrors {
   txpower?: string
 }
 
-const SSID_FORBIDDEN = /['";$`\\|<>&]/
+export const SSID_FORBIDDEN = /['";$`\\|<>&]/
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f]/
 const byteLength = (s: string) => new TextEncoder().encode(s).length
@@ -200,6 +200,26 @@ function observedValue(key: string, wifi: WifiAll): string | undefined {
   if (key === 'wifi_onoff') return wifi.master_supported ? (wifi.master_enabled ? '1' : '0') : undefined
   if (key === 'radio2_disabled') return wifi.band_2g.enabled ? '0' : '1'
   if (key === 'radio5_disabled') return wifi.band_5g.enabled ? '0' : '1'
+  if (key.startsWith('guest_')) {
+    const g = wifi.guest
+    if (!g) return undefined
+    switch (key) {
+      case 'guest_ssid':
+        return g.ssid
+      case 'guest_encryption':
+        return g.security
+      case 'guest_hidden':
+        return g.hidden ? '1' : '0'
+      case 'guest_disabled_2g':
+        return g.enabled_2g ? '0' : '1'
+      case 'guest_disabled_5g':
+        return g.enabled_5g ? '0' : '1'
+      case 'guest_active_time':
+        return g.active_minutes != null ? String(g.active_minutes) : undefined
+      default:
+        return undefined // passwords cannot be compared reliably
+    }
+  }
   const m = /^([a-z]+)_(2g|5g)$/.exec(key)
   if (!m) return undefined
   const band = m[2] === '2g' ? wifi.band_2g : wifi.band_5g
@@ -239,6 +259,19 @@ export function verifyApplied(patch: WifiPatch, wifi: WifiAll): Verification {
 export function fieldLabel(key: string): string {
   if (key === 'wifi_onoff') return t('Master Wi-Fi switch')
   if (key.startsWith('radio')) return t('Radio')
+  if (key.startsWith('guest_')) {
+    return (
+      {
+        guest_ssid: t('Guest SSID'),
+        guest_key: t('Guest password'),
+        guest_encryption: t('Guest security'),
+        guest_hidden: t('Guest hidden SSID'),
+        guest_disabled_2g: t('Guest network (2.4 GHz)'),
+        guest_disabled_5g: t('Guest network (5 GHz)'),
+        guest_active_time: t('Guest time limit'),
+      }[key] ?? key
+    )
+  }
   const prefix = key.replace(/_(2g|5g)$/, '')
   return (
     {

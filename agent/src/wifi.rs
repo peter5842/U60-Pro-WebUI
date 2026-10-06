@@ -235,6 +235,35 @@ pub fn wifi_status(_state: &AppState) -> (u16, Value) {
         json!(cfg.get("guest_5g.disabled")),
     );
     result.insert("guest_ssid".into(), json!(cfg.get("guest_2g.ssid")));
+    result.insert(
+        "guest_encryption".into(),
+        json!(cfg.get("guest_2g.encryption")),
+    );
+    result.insert(
+        "has_guest_key".into(),
+        json!(!cfg.get("guest_2g.key").is_empty()),
+    );
+    result.insert("guest_hidden".into(), json!(cfg.get("guest_2g.hidden")));
+    result.insert(
+        "guest_active_time".into(),
+        json!(cfg.get("guest_2g.guest_active_time")),
+    );
+    // Seconds until the firmware turns the guest network off (largest of the
+    // two bands); absent when no timer is running.
+    let left = ubus::call("zwrt_wlan", "wlan_get_guest_access_left_time", Some("{}"))
+        .ok()
+        .and_then(|v| {
+            v["wlan_guest_left_time_info"]
+                .as_array()?
+                .iter()
+                .filter_map(|e| {
+                    let t = &e["guest_left_time"];
+                    t.as_u64()
+                        .or_else(|| t.as_str().and_then(|s| s.trim().parse().ok()))
+                })
+                .max()
+        });
+    result.insert("guest_left_secs".into(), json!(left));
 
     (200, json!({"ok": true, "data": result}))
 }
@@ -261,6 +290,25 @@ const WIFI_FIELDS: &[(&str, &str)] = &[
     ("radio2_disabled", "wireless.wifi0.disabled"),
     ("radio5_disabled", "wireless.wifi1.disabled"),
 ];
+
+/// Guest network content, written to both guest access points through uci
+/// like the main network: (request key, uci option, validated as).
+const GUEST_FIELDS: &[(&str, &str, &str)] = &[
+    ("guest_ssid", "ssid", "ssid_guest"),
+    ("guest_key", "key", "key_guest"), // gitleaks:allow -- UCI option name, not a credential.
+    ("guest_encryption", "encryption", "encryption_guest"),
+    ("guest_hidden", "hidden", "hidden_guest"),
+];
+const GUEST_SECTIONS: [&str; 2] = ["guest_2g", "guest_5g"];
+/// Turning the guest network on or off and its time limit go through the
+/// stock call (`zwrt_wlan set`), which also runs the firmware's guest timer.
+const GUEST_ACTIVATION: [&str; 3] = [
+    "guest_disabled_2g",
+    "guest_disabled_5g",
+    "guest_active_time",
+];
+/// Minutes; 0 = no limit. The stock UI offers these.
+const GUEST_TIMES: [&str; 5] = ["0", "120", "240", "480", "720"];
 
 fn wifi_value(key: &str, value: &Value, cfg: &WifiConfig) -> Result<String, String> {
     let text = match value {
@@ -339,13 +387,26 @@ fn plan_wifi(parsed: &Value, cfg: &WifiConfig) -> Result<Vec<Change>, String> {
     let obj = parsed
         .as_object()
         .ok_or("expected a Wi-Fi settings object")?;
-    if obj.is_empty() || obj.len() > WIFI_FIELDS.len() + 2 {
+    if obj.is_empty()
+        || obj.len() > WIFI_FIELDS.len() + 2 + GUEST_FIELDS.len() + GUEST_ACTIVATION.len()
+    {
         return Err("empty or oversized Wi-Fi update".into());
     }
     let mut changes = Vec::new();
     for (key, value) in obj {
+        if GUEST_ACTIVATION.contains(&key.as_str()) {
+            continue; // planned by plan_guest_activation
+        }
         let mut paths = Vec::new();
-        if key == WIFI_ONOFF_KEY || key == WIFI6_SWITCH_KEY {
+        let mut validate_as = key.as_str();
+        if let Some((_, option, as_kind)) = GUEST_FIELDS.iter().find(|(k, _, _)| k == key) {
+            validate_as = as_kind;
+            for sec in GUEST_SECTIONS {
+                if cfg.wireless.contains_key(sec) {
+                    paths.push(format!("wireless.{sec}.{option}"));
+                }
+            }
+        } else if key == WIFI_ONOFF_KEY || key == WIFI6_SWITCH_KEY {
             for path in [
                 format!("wireless.zte_mbb.{key}"),
                 format!("zte_mbb.wifi.{key}"),
@@ -377,10 +438,10 @@ fn plan_wifi(parsed: &Value, cfg: &WifiConfig) -> Result<Vec<Change>, String> {
         if paths.is_empty() {
             return Err(format!("{key} is not supported by this firmware"));
         }
-        if key.starts_with("key_") && value.as_str() == Some("••••••••") {
+        if validate_as.starts_with("key_") && value.as_str() == Some("••••••••") {
             continue;
         }
-        let after = wifi_value(key, value, cfg)?;
+        let after = wifi_value(validate_as, value, cfg)?;
         for path in paths {
             let (config, tail) = path.split_once('.').unwrap();
             let before = (if config == "wireless" {
@@ -396,6 +457,21 @@ fn plan_wifi(parsed: &Value, cfg: &WifiConfig) -> Result<Vec<Change>, String> {
                     before: before.clone(),
                     after: after.clone(),
                 });
+            }
+        }
+    }
+    if obj.contains_key("guest_encryption") || obj.contains_key("guest_key") {
+        for sec in GUEST_SECTIONS {
+            let effective = |field: &str| {
+                let path = format!("wireless.{sec}.{field}");
+                changes
+                    .iter()
+                    .find(|c| c.key == path)
+                    .map(|c| c.after.clone())
+                    .unwrap_or_else(|| cfg.get(&format!("{sec}.{field}")))
+            };
+            if cfg.wireless.contains_key(sec) && effective("encryption") != "none" {
+                wifi_value("key_guest", &Value::String(effective("key")), cfg)?;
             }
         }
     }
@@ -423,6 +499,88 @@ fn plan_wifi(parsed: &Value, cfg: &WifiConfig) -> Result<Vec<Change>, String> {
     Ok(changes)
 }
 
+/// The `zwrt_wlan set` payload for guest on/off and time limit, or None when
+/// the request does not touch them. `content` is the uci plan, so a request
+/// that opens the network and turns it on is judged on the result.
+fn plan_guest_activation(
+    parsed: &Value,
+    cfg: &WifiConfig,
+    content: &[Change],
+) -> Result<Option<Value>, String> {
+    let Some(obj) = parsed.as_object() else {
+        return Ok(None);
+    };
+    if !GUEST_ACTIVATION.iter().any(|k| obj.contains_key(*k)) {
+        return Ok(None);
+    }
+    let text = |key: &str| -> Result<Option<String>, String> {
+        match obj.get(key) {
+            None => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(Value::Bool(b)) => Ok(Some(if *b { "1" } else { "0" }.into())),
+            Some(Value::Number(n)) if n.as_u64().is_some() => Ok(Some(n.to_string())),
+            Some(_) => Err(format!("{key} has an invalid type")),
+        }
+    };
+    let time = text("guest_active_time")?;
+    if let Some(t) = &time {
+        if !GUEST_TIMES.contains(&t.as_str()) {
+            return Err("guest_active_time must be 0, 120, 240, 480 or 720 minutes".into());
+        }
+    }
+    let mut payload = serde_json::Map::new();
+    let mut any_on = false;
+    for (sec, key) in [
+        ("guest_2g", "guest_disabled_2g"),
+        ("guest_5g", "guest_disabled_5g"),
+    ] {
+        if !cfg.wireless.contains_key(sec) {
+            continue;
+        }
+        let disabled = match text(key)? {
+            Some(d) if d == "0" || d == "1" => Some(d),
+            Some(_) => return Err(format!("{key} must be 0 or 1")),
+            None => None,
+        };
+        let effective_disabled = disabled
+            .clone()
+            .unwrap_or_else(|| cfg.get(&format!("{sec}.disabled")));
+        any_on |= effective_disabled == "0";
+        let mut entry = serde_json::Map::new();
+        if let Some(d) = disabled {
+            entry.insert("disabled".into(), json!(d));
+        }
+        if let Some(t) = &time {
+            entry.insert("guest_active_time".into(), json!(t));
+        }
+        if !entry.is_empty() {
+            payload.insert(sec.into(), Value::Object(entry));
+        }
+    }
+    // The stock UI refuses an unlimited open guest network.
+    let effective = |sec: &str, field: &str| {
+        let path = format!("wireless.{sec}.{field}");
+        content
+            .iter()
+            .find(|c| c.key == path)
+            .map(|c| c.after.clone())
+            .unwrap_or_else(|| cfg.get(&format!("{sec}.{field}")))
+    };
+    let open = effective("guest_2g", "encryption") == "none";
+    let unlimited = time
+        .clone()
+        .unwrap_or_else(|| effective("guest_2g", "guest_active_time"))
+        == "0";
+    if any_on && open && unlimited {
+        return Err("an open guest network needs a time limit; set a password or a limit".into());
+    }
+    Ok(if payload.is_empty() {
+        None
+    } else {
+        Some(Value::Object(payload))
+    })
+}
+
 pub fn wifi_set(_state: &AppState, body: &[u8]) -> (u16, Value) {
     let parsed: Value = match serde_json::from_slice(body) {
         Ok(value) => value,
@@ -434,17 +592,27 @@ pub fn wifi_set(_state: &AppState, body: &[u8]) -> (u16, Value) {
         }
     };
     let _guard = uci_transaction::WIFI_CHANGE.safe_lock();
-    let changes = match plan_wifi(&parsed, &WifiConfig::load()) {
+    let cfg = WifiConfig::load();
+    let changes = match plan_wifi(&parsed, &cfg) {
         Ok(changes) => changes,
         Err(error) => return (400, json!({"ok": false, "error": error})),
     };
-    match uci_transaction::apply(&changes) {
-        Ok(()) => (
-            200,
-            json!({"ok": true, "data": {"status": "ok", "changed": !changes.is_empty()}}),
-        ),
-        Err(error) => (503, json!({"ok": false, "error": error})),
+    let activation = match plan_guest_activation(&parsed, &cfg, &changes) {
+        Ok(a) => a,
+        Err(error) => return (400, json!({"ok": false, "error": error})),
+    };
+    if let Err(error) = uci_transaction::apply(&changes) {
+        return (503, json!({"ok": false, "error": error}));
     }
+    if let Some(payload) = &activation {
+        if let Err(error) = ubus::call("zwrt_wlan", "set", Some(&payload.to_string())) {
+            return (503, json!({"ok": false, "error": error}));
+        }
+    }
+    (
+        200,
+        json!({"ok": true, "data": {"status": "ok", "changed": !changes.is_empty() || activation.is_some()}}),
+    )
 }
 
 #[cfg(test)]
@@ -489,6 +657,60 @@ mod tests {
             plan.iter().find(|c| c.key.ends_with(".key")).unwrap().after,
             key
         );
+    }
+    fn guest_config() -> WifiConfig {
+        let mut cfg = config();
+        for sec in GUEST_SECTIONS {
+            cfg.wireless.insert(sec.into(), "wifi-iface".into());
+            for (field, v) in [
+                ("ssid", "Guest"),
+                ("encryption", "none"),
+                ("key", "oldguestkey"),
+                ("hidden", "0"),
+                ("disabled", "1"),
+                ("guest_active_time", "240"),
+            ] {
+                cfg.wireless.insert(format!("{sec}.{field}"), v.into());
+            }
+        }
+        cfg
+    }
+    #[test]
+    fn guest_content_goes_to_both_bands_and_activation_to_the_stock_call() {
+        let cfg = guest_config();
+        let body =
+            json!({"guest_ssid": "Visitors", "guest_disabled_2g": "0", "guest_active_time": 120});
+        let plan = plan_wifi(&body, &cfg).unwrap();
+        let keys: Vec<&str> = plan.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(keys, ["wireless.guest_2g.ssid", "wireless.guest_5g.ssid"]);
+        let act = plan_guest_activation(&body, &cfg, &plan).unwrap().unwrap();
+        assert_eq!(act["guest_2g"]["disabled"], "0");
+        assert_eq!(act["guest_2g"]["guest_active_time"], "120");
+        assert_eq!(act["guest_5g"], json!({"guest_active_time": "120"}));
+        assert!(
+            plan_guest_activation(&json!({"guest_ssid": "x"}), &cfg, &[])
+                .unwrap()
+                .is_none()
+        );
+    }
+    #[test]
+    fn guest_rules() {
+        let cfg = guest_config();
+        // Open and unlimited is refused, as in the stock UI.
+        let open = json!({"guest_disabled_2g": "0", "guest_active_time": "0"});
+        assert!(plan_guest_activation(&open, &cfg, &[]).is_err());
+        // With a password it is fine.
+        let body = json!({"guest_encryption": "psk2+ccmp", "guest_key": "longenough1", "guest_disabled_2g": "0", "guest_active_time": "0"});
+        let plan = plan_wifi(&body, &cfg).unwrap();
+        assert!(plan_guest_activation(&body, &cfg, &plan).unwrap().is_some());
+        // Encryption needs a valid key; times are limited to the stock list.
+        assert!(plan_wifi(
+            &json!({"guest_encryption": "psk2+ccmp", "guest_key": "short"}),
+            &cfg
+        )
+        .is_err());
+        assert!(plan_guest_activation(&json!({"guest_active_time": 30}), &cfg, &[]).is_err());
+        assert!(plan_guest_activation(&json!({"guest_disabled_5g": "2"}), &cfg, &[]).is_err());
     }
     #[test]
     fn wifi7_radios_use_eht_bandwidth_names() {

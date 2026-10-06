@@ -533,9 +533,17 @@ def wifi_defaults():
         "encryption_2g": "psk3-mixed", "encryption_5g": "psk3-mixed",
         "hidden_2g": "0", "hidden_5g": "0",
         "clients_2g": 1, "clients_5g": 2, "clients_total": 3,
-        "guest_ssid": "",
+        "guest_ssid": "U60Pro-Guest",
         "guest_disabled_2g": "1", "guest_disabled_5g": "1",
+        "guest_encryption": "none", "has_guest_key": False, "guest_hidden": "0",
+        "guest_active_time": "240", "guest_left_secs": None,
     }
+
+
+GUEST_CONTENT = {"guest_ssid": "ssid_2g", "guest_key": "key_2g", "guest_encryption": "encryption_2g",
+                 "guest_hidden": "hidden_2g"}  # request key -> the main-band rule it is validated with
+GUEST_ACTIVATION = ("guest_disabled_2g", "guest_disabled_5g", "guest_active_time")
+GUEST_TIMES = ("0", "120", "240", "480", "720")
 
 
 WIFI_FIELDS = (
@@ -598,10 +606,23 @@ def put_wifi_settings(body):
     if not isinstance(body, dict):
         raise ApiError(400, "expected a Wi-Fi settings object")
     wifi = STATE["wifi"]
-    if not body or len(body) > len(WIFI_FIELDS) + 2:
+    if not body or len(body) > len(WIFI_FIELDS) + 2 + len(GUEST_CONTENT) + len(GUEST_ACTIVATION):
         raise ApiError(400, "empty or oversized Wi-Fi update")
     planned = {}
     for key, value in body.items():
+        if key in GUEST_ACTIVATION:
+            text = "1" if value is True else "0" if value is False else str(value)
+            if key == "guest_active_time" and text not in GUEST_TIMES:
+                raise ApiError(400, "guest_active_time must be 0, 120, 240, 480 or 720 minutes")
+            if key != "guest_active_time" and text not in ("0", "1"):
+                raise ApiError(400, f"{key} must be 0 or 1")
+            planned[key] = text
+            continue
+        if key in GUEST_CONTENT:
+            if key == "guest_key" and value == "••••••••":
+                continue
+            planned[key] = wifi_value(GUEST_CONTENT[key], value, wifi)
+            continue
         if key in WIFI_GLOBAL:
             supported = wifi.get("wifi_onoff_supported" if key == "wifi_onoff" else "wifi6_supported")
             if not supported:
@@ -616,13 +637,29 @@ def put_wifi_settings(body):
             effective = {f: planned.get(f + "_" + suffix, wifi[f + "_" + suffix]) for f in ("encryption", "key")}
             if effective["encryption"] != "none" and not _valid_wifi_key(effective["key"]):
                 raise ApiError(400, f"key_{suffix} is outside the supported values")
+    if "guest_encryption" in body or "guest_key" in body:
+        enc = planned.get("guest_encryption", wifi["guest_encryption"])
+        if enc != "none" and not (planned.get("guest_key") or wifi["has_guest_key"]):
+            raise ApiError(400, "key_guest is outside the supported values")
+    on = any(planned.get(k, wifi[k]) == "0" for k in ("guest_disabled_2g", "guest_disabled_5g"))
+    if any(k in body for k in GUEST_ACTIVATION) and on \
+            and planned.get("guest_encryption", wifi["guest_encryption"]) == "none" \
+            and planned.get("guest_active_time", wifi["guest_active_time"]) == "0":
+        raise ApiError(400, "an open guest network needs a time limit; set a password or a limit")
     changed = False
     for key, text in planned.items():
+        if key == "guest_key":
+            wifi["has_guest_key"] = True
+            changed = True
+            continue
         if wifi.get(key) != text:
             changed = True
         wifi[key] = text
         if key.startswith("key_"):
             wifi["has_key_" + key[-2:]] = text != ""
+    on = wifi["guest_disabled_2g"] == "0" or wifi["guest_disabled_5g"] == "0"
+    minutes = int(wifi["guest_active_time"])
+    wifi["guest_left_secs"] = minutes * 60 if on and minutes else None
     # Runtime values follow the configuration: auto channel picks one, the
     # active width follows htmode (EHT40 -> "40 MHz").
     for band, fallback in (("2g", 6), ("5g", 44)):

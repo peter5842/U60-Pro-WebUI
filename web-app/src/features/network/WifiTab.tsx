@@ -6,6 +6,7 @@ import type { WifiBand } from '../../types'
 import { Button, Field, Input, Select, Toggle } from '../../ui/controls'
 import { confirm, toastError, type ConfirmOptions } from '../../ui/feedback'
 import { Card, Chip, InlineStatus, Loading, Skeleton, Unavailable } from '../../ui/primitives'
+import GuestWifiCard from './GuestWifiCard'
 import { getBandInsights } from './wifiAdvice'
 import { bandSaveConfirm, masterOffConfirm, radioOffConfirm, syncConfirm } from './wifiConfirm'
 import {
@@ -467,12 +468,16 @@ export default function WifiTab() {
         <BandCard label="5 GHz" other="2.4 GHz" band={data.band_5g} suffix="5g" masterEnabled={data.master_enabled} locked={pending} apply={apply} />
       </div>
 
-      {data.guest_ssid && (
-        <Card title={t('Guest network')}>
-          <p className="break-words text-body text-ink2">
-            {t('SSID:')} <span className="font-semibold text-ink">{data.guest_ssid}</span>
-          </p>
-        </Card>
+      {data.guest ? (
+        <GuestWifiCard guest={data.guest} locked={pending} apply={apply} />
+      ) : (
+        data.guest_ssid && (
+          <Card title={t('Guest network')}>
+            <p className="break-words text-body text-ink2">
+              {t('SSID:')} <span className="font-semibold text-ink">{data.guest_ssid}</span>
+            </p>
+          </Card>
+        )
       )}
     </div>
   )

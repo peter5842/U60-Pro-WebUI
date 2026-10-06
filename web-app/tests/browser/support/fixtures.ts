@@ -477,7 +477,8 @@ export function wifiStatus(over?: Json): Json {
       encryption_2g: 'psk3-mixed', encryption_5g: 'psk3-mixed',
       hidden_2g: '0', hidden_5g: '0',
       clients_2g: 1, clients_5g: 2, clients_total: 3,
-      guest_ssid: '', guest_disabled_2g: '1', guest_disabled_5g: '1',
+      guest_ssid: 'synthetic-guest', guest_disabled_2g: '1', guest_disabled_5g: '1',
+      guest_encryption: 'none', has_guest_key: false, guest_hidden: '0', guest_active_time: '240',
     },
     over,
   )

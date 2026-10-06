@@ -558,6 +558,19 @@ export function mapWifi(d: Record<string, unknown>): WifiAll {
       clients: d.clients_5g as number | undefined,
     },
     guest_ssid: d.guest_ssid as string | undefined,
+    guest:
+      d.guest_disabled_2g === '0' || d.guest_disabled_2g === '1'
+        ? {
+            ssid: nonEmptyStr(d.guest_ssid),
+            enabled_2g: d.guest_disabled_2g === '0',
+            enabled_5g: d.guest_disabled_5g === '0',
+            security: nonEmptyStr(d.guest_encryption),
+            has_key: d.has_guest_key === true,
+            hidden: d.guest_hidden === '1',
+            active_minutes: intInRange(Number(d.guest_active_time), 0, 1440),
+            left_secs: nonNegativeInt(d.guest_left_secs),
+          }
+        : undefined,
     master_supported: masterSupported,
     master_enabled: masterEnabled,
     wifi6_supported: wifi6Supported,
