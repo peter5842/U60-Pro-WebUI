@@ -377,6 +377,14 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
     obj.insert("secret".into(), json!(state.secret));
     // Rule data is installed and updated by scripts/deploy-mihomo.sh.
     obj.insert("geo-auto-update".into(), json!(false));
+    // The firmware keeps local time in the system clock labelled as UTC (8 h
+    // off in China). Time-checked protocols (Shadowsocks 2022, VMess, some
+    // REALITY servers) then reject every connection. mihomo's NTP corrects
+    // only its own clock; the firmware's clock is never written.
+    obj.insert(
+        "ntp".into(),
+        json!({"enable": true, "write-to-system": false, "server": "ntp.aliyun.com", "port": 123, "interval": 30}),
+    );
     let profile = obj.entry("profile").or_insert_with(|| json!({}));
     if let Some(p) = profile.as_object_mut() {
         p.insert("store-selected".into(), json!(true));
@@ -541,6 +549,9 @@ mod tests {
         assert_eq!(c["find-process-mode"], "off");
         assert_eq!(c["geo-auto-update"], false);
         assert_eq!(c["profile"]["store-selected"], true);
+        // mihomo keeps its own NTP-corrected clock; the system clock is untouched.
+        assert_eq!(c["ntp"]["enable"], true);
+        assert_eq!(c["ntp"]["write-to-system"], false);
     }
 
     #[test]

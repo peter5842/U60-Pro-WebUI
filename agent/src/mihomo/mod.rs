@@ -214,6 +214,9 @@ impl Manager {
         std::thread::spawn(move || {
             // Give the LAN bridge and the WAN time to come up after boot.
             std::thread::sleep(Duration::from_secs(10));
+            // An upgraded agent may render a different config (new fixes);
+            // bring an adopted mihomo in line once.
+            me.lock().reconcile();
             let mut ticks: u64 = 0;
             loop {
                 me.lock().tick();
@@ -299,6 +302,39 @@ impl Inner {
     fn profile_sub(&self) -> Option<&Subscription> {
         let id = self.state.settings.profile.as_deref()?;
         self.state.subscriptions.iter().find(|s| s.id == id)
+    }
+
+    /// Re-render the config and, if it differs from the installed file,
+    /// validate, install and hot-reload it (e.g. after an agent upgrade).
+    fn reconcile(&mut self) {
+        if !self.state.settings.enabled || !self.alive() {
+            return;
+        }
+        let Ok(ip) = lan_ip() else { return };
+        let base = match &self.state.settings.profile {
+            Some(id) => match profile::load(id) {
+                Ok(v) => Some(v),
+                Err(_) => return,
+            },
+            None => None,
+        };
+        let Ok(rendered) = config::render(&self.state, &ip, base.as_ref()) else {
+            return;
+        };
+        let Ok(bytes) = serde_json::to_vec_pretty(&rendered) else {
+            return;
+        };
+        if fs::read(service::CONFIG).ok().as_deref() == Some(bytes.as_slice()) {
+            return;
+        }
+        let state = self.state.clone();
+        match self.write_config(&state).and_then(|_| self.reload()) {
+            Ok(()) => eprintln!("[mihomo] config updated to this agent version and reloaded"),
+            Err(e) => {
+                eprintln!("[mihomo] could not apply the updated config: {e}");
+                self.last_error = Some(e);
+            }
+        }
     }
 
     /// The mixed-port proxy URL when a forwarding check is due.
