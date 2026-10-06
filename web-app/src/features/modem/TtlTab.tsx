@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../../data/api'
 import { useResource } from '../../data/poll'
+import { t } from '../../i18n'
 import type { TtlStatus } from '../../types'
 import { Button, Field, Input } from '../../ui/controls'
 import { toastError } from '../../ui/feedback'
@@ -42,7 +43,7 @@ export default function TtlTab() {
       setDraft(null)
       await readBack()
     } catch (e) {
-      toastError(e, 'Failed to set TTL')
+      toastError(e, t('Failed to set TTL'))
     } finally {
       setBusy(false)
     }
@@ -56,7 +57,7 @@ export default function TtlTab() {
       setFieldError(undefined)
       await readBack()
     } catch (e) {
-      toastError(e, 'Failed to clear TTL')
+      toastError(e, t('Failed to clear TTL'))
     } finally {
       setBusy(false)
     }
@@ -64,7 +65,7 @@ export default function TtlTab() {
 
   const input = (placeholder?: string) => (
     <div className="w-28">
-      <Field label="TTL value" hint="1 to 255" error={fieldError}>
+      <Field label={t('TTL value')} hint={t('1 to 255')} error={fieldError}>
         {(ids) => (
           <Input
             id={ids.id}
@@ -92,8 +93,8 @@ export default function TtlTab() {
     body = <Skeleton className="h-16" />
   } else if (!status.data) {
     body = (
-      <InlineStatus kind="error" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-        TTL status could not be read{status.error ? `: ${status.error}` : '.'}
+      <InlineStatus kind="error" action={{ label: t('Retry'), onClick: status.refresh, loading: status.refreshing }}>
+        {status.error ? t('TTL status could not be read: {error}', { error: status.error }) : t('TTL status could not be read.')}
       </InlineStatus>
     )
   } else {
@@ -101,33 +102,33 @@ export default function TtlTab() {
     body = (
       <div className="space-y-3">
         {status.status === 'stale' && (
-          <InlineStatus kind="stale" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-            Showing the last TTL status read. The latest refresh failed.
+          <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: status.refresh, loading: status.refreshing }}>
+            {t('Showing the last TTL status read. The latest refresh failed.')}
           </InlineStatus>
         )}
         {unverified && (
-          <InlineStatus kind="warn" action={{ label: 'Re-read status', onClick: () => void readBack() }}>
-            The router accepted the change, but the TTL status could not be re-read. What is shown may be out of date.
+          <InlineStatus kind="warn" action={{ label: t('Re-read status'), onClick: () => void readBack() }}>
+            {t('The router accepted the change, but the TTL status could not be re-read. What is shown may be out of date.')}
           </InlineStatus>
         )}
         {state === 'unknown' ? (
-          <InlineStatus kind="warn" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-            The router did not report whether TTL clamping is on.
+          <InlineStatus kind="warn" action={{ label: t('Retry'), onClick: status.refresh, loading: status.refreshing }}>
+            {t('The router did not report whether TTL clamping is on.')}
           </InlineStatus>
         ) : state === 'active' ? (
           <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
             <div className="flex items-center gap-2 pb-2">
               <span className="h-2 w-2 rounded-full bg-ok" aria-hidden="true" />
-              <span className="tnum font-mono text-body font-semibold text-ok">Active (TTL={status.data.ttl_value ?? '?'})</span>
+              <span className="tnum font-mono text-body font-semibold text-ok">{t('Active (TTL={ttl})', { ttl: status.data.ttl_value ?? '?' })}</span>
               {families && <Chip tone="default">{families}</Chip>}
             </div>
             <div className="flex items-end gap-2">
               {input()}
               <Button variant="outline" onClick={applyTtl} loading={busy}>
-                Update
+                {t('Update')}
               </Button>
               <Button variant="ghost" onClick={clearTtl} disabled={busy}>
-                Disable
+                {t('Disable')}
               </Button>
             </div>
           </div>
@@ -135,7 +136,7 @@ export default function TtlTab() {
           <div className="flex flex-wrap items-end gap-2">
             {input('65')}
             <Button variant="primary" onClick={applyTtl} loading={busy} disabled={!ttlText}>
-              Enable clamping
+              {t('Enable clamping')}
             </Button>
           </div>
         )}
@@ -144,11 +145,12 @@ export default function TtlTab() {
   }
 
   return (
-    <Card title="TTL clamping">
+    <Card title={t('TTL clamping')}>
       <div className="space-y-3">
         <p className="text-meta text-ink2">
-          Overrides the TTL / hop limit on LAN ingress traffic to prevent carrier tethering detection.
-          Applied immediately and persists across reboots.
+          {t(
+            'Overrides the TTL / hop limit on LAN ingress traffic to prevent carrier tethering detection. Applied immediately and persists across reboots.',
+          )}
         </p>
         {body}
       </div>

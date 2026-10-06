@@ -11,21 +11,23 @@ import { classifySignal, signalUnit, toneTextClass } from '../../data/signalQual
 import type { SignalMetric, SignalTone } from '../../data/signalQuality'
 import { usageTotal } from '../../data/usage'
 import { modemMode, parseBandwidthMHz } from '../../format'
+import { t } from '../../i18n'
 import type { CarrierComponent, DataUsage, SignalInfo, UsagePeriod } from '../../types'
 
 // ── Metric help ───────────────────────────────────────────────────────────────
 
 export const METRIC_HELP: Record<SignalMetric, string> = {
-  rsrp: 'Reference Signal Received Power: power of a single LTE/NR reference signal. Primary indicator of signal strength.',
-  rsrq: 'Reference Signal Received Quality: signal quality accounting for noise and interference from neighbouring cells.',
-  sinr: 'Signal to Interference plus Noise Ratio: how far the signal is above the noise floor. A key factor in achievable throughput.',
-  rssi: 'Received Signal Strength Indicator: total wideband received power including signal, noise and interference. Shown without a rating.',
+  rsrp: t('Reference Signal Received Power: power of a single LTE/NR reference signal. Primary indicator of signal strength.'),
+  rsrq: t('Reference Signal Received Quality: signal quality accounting for noise and interference from neighbouring cells.'),
+  sinr: t('Signal to Interference plus Noise Ratio: how far the signal is above the noise floor. A key factor in achievable throughput.'),
+  rssi: t('Received Signal Strength Indicator: total wideband received power including signal, noise and interference. Shown without a rating.'),
 }
 
 export const METRIC_LABEL: Record<SignalMetric, string> = { rsrp: 'RSRP', rsrq: 'RSRQ', sinr: 'SINR', rssi: 'RSSI' }
 
-export const RATING_NOTE =
-  'Ratings are approximate link indicators, not a standard or a speed guarantee. RSSI is shown without a rating.'
+export const RATING_NOTE = t(
+  'Ratings are approximate link indicators, not a standard or a speed guarantee. RSSI is shown without a rating.',
+)
 
 // ── One measurement ───────────────────────────────────────────────────────────
 
@@ -54,16 +56,25 @@ export function metricView(metric: SignalMetric, value: unknown): MetricView {
       metric,
       text: null,
       unit,
-      word: 'Unavailable',
+      word: t('Unavailable'),
       level: 'unknown',
       tone: 'neutral',
       className: 'text-ink3',
-      description: `${name} unavailable`,
+      description: t('{name} unavailable', { name }),
     }
   }
   const text = String(value)
   if (metric === 'rssi') {
-    return { metric, text, unit, word: null, level: 'unrated', tone: 'neutral', className: 'text-ink2', description: `${name} ${text} ${unit}, not rated` }
+    return {
+      metric,
+      text,
+      unit,
+      word: null,
+      level: 'unrated',
+      tone: 'neutral',
+      className: 'text-ink2',
+      description: t('{name} {value} {unit}, not rated', { name, value: text, unit }),
+    }
   }
   return {
     metric,
@@ -73,7 +84,7 @@ export function metricView(metric: SignalMetric, value: unknown): MetricView {
     level: c.level,
     tone: c.tone,
     className: toneTextClass(c.tone),
-    description: `${name} ${text} ${unit}, ${c.label}`,
+    description: t('{name} {value} {unit}, {rating}', { name, value: text, unit, rating: c.label }),
   }
 }
 
@@ -96,7 +107,7 @@ export function servingView(signal: SignalInfo | null | undefined): ServingView 
   if (!primary) return { available: false, rat: null, label: null }
   const mode = modemMode(signal?.type)
   const rat =
-    primary.rat === 'nr' ? (mode === 'SA' ? '5G SA' : '5G NR') : mode === 'ENDC' ? 'LTE anchor (NSA)' : 'LTE'
+    primary.rat === 'nr' ? (mode === 'SA' ? '5G SA' : '5G NR') : mode === 'ENDC' ? t('LTE anchor (NSA)') : 'LTE'
   const band = primary.carrier.band || undefined
   return {
     available: true,
@@ -110,7 +121,7 @@ export function servingView(signal: SignalInfo | null | undefined): ServingView 
 
 /** Signal bars: undefined = not reported (never shown as 0); a genuine 0 stays 0. */
 export function barsText(bars: number | undefined | null): string | null {
-  return typeof bars === 'number' && Number.isFinite(bars) ? `${bars}/5 bars` : null
+  return typeof bars === 'number' && Number.isFinite(bars) ? t('{n}/5 bars', { n: bars }) : null
 }
 
 // ── Carrier counts and bandwidth (R06) ────────────────────────────────────────
@@ -167,5 +178,5 @@ export interface UsageRow {
 /** Home rows: the cycle counters are the device's month/cycle counters, not a calendar month. */
 export function homeUsageRows(usage: DataUsage): UsageRow[] {
   const row = (label: string, p: UsagePeriod): UsageRow => ({ label, rx: p.rx_bytes, tx: p.tx_bytes, total: usageTotal(p) })
-  return [row('Today', usage.day), row('Current cycle', usage.cycle ?? usage.month), row('Total', usage.total)]
+  return [row(t('Today'), usage.day), row(t('Current cycle'), usage.cycle ?? usage.month), row(t('Total'), usage.total)]
 }

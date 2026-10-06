@@ -1,0 +1,27 @@
+// Chinese UI strings: common (shared ui/ components, formatting, client errors).
+// Keys are the English source text passed to t().
+export const common: Record<string, string> = {
+  'Something went wrong': '出了点问题',
+  'Dismiss notification': '关闭通知',
+  'Effect:': '影响：',
+  'Recovery:': '恢复方法：',
+  Cancel: '取消',
+  Confirm: '确认',
+  Loading: '加载中',
+  Unavailable: '不可用',
+  'Signal bars unavailable': '信号格数不可用',
+  '{n} of 5 bars': '{n}/5 格',
+  '{n}d': '{n} 天',
+  '{n}h': '{n} 小时',
+  '{n}m': '{n} 分',
+  '{n}s': '{n} 秒',
+  'Timed out reaching the agent': '连接 Agent 超时',
+  'Failed to reach the agent at {address}': '无法连接位于 {address} 的 Agent',
+  'Invalid response from agent ({status})': 'Agent 返回了无效的响应（{status}）',
+  'request failed ({status})': '请求失败（{status}）',
+  'Invalid LAN reconnect address': '无效的局域网重连地址',
+  'CSV download failed ({status})': 'CSV 下载失败（{status}）',
+  'Invalid CSV response': '无效的 CSV 响应',
+  '4G only': '仅 4G',
+  '3G only': '仅 3G',
+}

@@ -2,6 +2,7 @@ import { useHome } from '../../app/HomeContext'
 import { signalLegend, toneTextClass } from '../../data/signalQuality'
 import type { SignalMetric } from '../../data/signalQuality'
 import { formatBandwidthMHz } from '../../format'
+import { t } from '../../i18n'
 import type { CarrierComponent } from '../../types'
 import { Card, Chip, SignalBars, Skeleton, Unavailable } from '../../ui/primitives'
 import { MetricValue } from './MetricValue'
@@ -18,10 +19,10 @@ function CarrierStatus({ carrier, empty = null }: { carrier: CarrierComponent; e
   return (
     <span className="flex flex-wrap gap-1">
       {carrier.ul_configured !== undefined && (
-        <Chip tone={carrier.ul_configured ? 'ok' : 'default'}>UL {carrier.ul_configured ? '✓' : '✗'}</Chip>
+        <Chip tone={carrier.ul_configured ? 'ok' : 'default'}>{t('UL')} {carrier.ul_configured ? '✓' : '✗'}</Chip>
       )}
       {carrier.active !== undefined && (
-        <Chip tone={carrier.active ? 'ok' : 'default'}>{carrier.active ? 'Active' : 'Idle'}</Chip>
+        <Chip tone={carrier.active ? 'ok' : 'default'}>{carrier.active ? t('Active') : t('Idle')}</Chip>
       )}
     </span>
   )
@@ -41,7 +42,7 @@ function CarrierTable({ carriers, tech }: { carriers: CarrierComponent[]; tech: 
   return (
     <div className={isNR ? 'mb-4' : ''}>
       <p className={`label mb-2 ${bandText}`}>
-        {isNR ? 'NR 5G' : 'LTE'} carriers
+        {isNR ? t('NR 5G carriers') : t('LTE carriers')}
       </p>
 
       {/* Desktop table */}
@@ -49,13 +50,13 @@ function CarrierTable({ carriers, tech }: { carriers: CarrierComponent[]; tech: 
         <table className="w-full text-left text-body">
           <thead>
             <tr className="label border-b border-line/8">
-              <th className="pb-1.5 pr-3 font-semibold">Type</th>
-              <th className="pb-1.5 pr-3 font-semibold">Band</th>
-              <th className="pb-1.5 pr-3 font-semibold">Status</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Type')}</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Band')}</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Status')}</th>
               <th className="pb-1.5 pr-3 font-semibold">PCI</th>
               <th className="pb-1.5 pr-3 font-semibold">{isNR ? 'ARFCN' : 'EARFCN'}</th>
-              <th className="pb-1.5 pr-3 font-semibold">BW</th>
-              <th className="pb-1.5 pr-3 font-semibold">Freq</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('BW')}</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Freq')}</th>
               {METRICS.map((m, i) => (
                 <th key={m} className={`pb-1.5 font-semibold ${i < METRICS.length - 1 ? 'pr-3' : ''}`}>
                   <Tip text={METRIC_HELP[m]}>{METRIC_LABEL[m]}</Tip>
@@ -133,7 +134,9 @@ function CarrierTable({ carriers, tech }: { carriers: CarrierComponent[]; tech: 
                 <span>
                   {isNR ? 'ARFCN' : 'EARFCN'} {c.earfcn}
                 </span>
-                <span>BW {c.bandwidth}</span>
+                <span>
+                  {t('BW')} {c.bandwidth}
+                </span>
                 {c.freq != null && <span>{c.freq.toFixed(1)} MHz</span>}
               </div>
             </div>
@@ -154,7 +157,7 @@ const LEGEND: { metric: SignalMetric; title: string }[] = [
 
 function Legend() {
   return (
-    <Card title="Signal quality reference">
+    <Card title={t('Signal quality reference')}>
       <div className="grid grid-cols-1 gap-4 text-body md:grid-cols-3">
         {LEGEND.map(({ metric, title }) => (
           <div key={metric} data-legend={metric}>
@@ -195,7 +198,7 @@ export default function Overview() {
   if (!data) {
     return (
       <Card>
-        <p className="text-body text-ink3">No radio data reported by the modem.</p>
+        <p className="text-body text-ink3">{t('No radio data reported by the modem.')}</p>
       </Card>
     )
   }
@@ -210,8 +213,14 @@ export default function Overview() {
   const serving = servingView(data)
   const bars = barsText(data.signal_bars)
   const activeParts = [
-    hasNR && `${nr.active} NR active${nr.idle ? `, ${nr.idle} idle` : ''}`,
-    hasLTE && `${lte.active} LTE active${lte.idle ? `, ${lte.idle} idle` : ''}`,
+    hasNR &&
+      (nr.idle
+        ? t('{active} NR active, {idle} idle', { active: nr.active, idle: nr.idle })
+        : t('{active} NR active', { active: nr.active })),
+    hasLTE &&
+      (lte.idle
+        ? t('{active} LTE active, {idle} idle', { active: lte.active, idle: lte.idle })
+        : t('{active} LTE active', { active: lte.active })),
   ].filter(Boolean)
 
   return (
@@ -219,25 +228,25 @@ export default function Overview() {
       <Card>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div>
-            <p className="label">Connection</p>
+            <p className="label">{t('Connection')}</p>
             <p className="mt-0.5 text-sm font-bold text-ink">{data.type ?? '—'}</p>
           </div>
           <div>
-            <p className="label">Serving cell</p>
+            <p className="label">{t('Serving cell')}</p>
             <p data-testid="serving-cell" className="mt-0.5 text-sm font-bold text-ink">
-              {serving.label ?? <span className="text-ink3"><Unavailable label="No serving carrier reported" /></span>}
+              {serving.label ?? <span className="text-ink3"><Unavailable label={t('No serving carrier reported')} /></span>}
             </p>
           </div>
           <div>
-            <p className="label">Provider</p>
+            <p className="label">{t('Provider')}</p>
             <p className="mt-0.5 text-sm font-medium text-ink">{data.carrier ?? '—'}</p>
           </div>
           <div>
-            <p className="label">Cell ID</p>
+            <p className="label">{t('Cell ID')}</p>
             <p className="tnum mt-0.5 min-w-0 break-all font-mono text-body text-ink2">{data.cell_id ?? '—'}</p>
           </div>
           <div>
-            <p className="label">Carriers reported</p>
+            <p className="label">{t('Carriers reported')}</p>
             <p className="mt-0.5 text-sm text-ink2">
               {hasNR ? `${nr.reported} NR` : ''}
               {hasNR && hasLTE ? ' + ' : ''}
@@ -247,22 +256,24 @@ export default function Overview() {
             {activeParts.length > 0 && <p className="text-caption text-ink3">{activeParts.join(' · ')}</p>}
           </div>
           <div>
-            <p className="label">Reported bandwidth</p>
+            <p className="label">{t('Reported bandwidth')}</p>
             <p className="tnum font-mono mt-0.5 text-sm font-bold text-ink">{formatBandwidthMHz(bw.reportedMHz)}</p>
-            <p className="text-caption text-ink3">Sum of all reported carriers</p>
+            <p className="text-caption text-ink3">{t('Sum of all reported carriers')}</p>
             {hasNR && hasLTE && (
               <p className="tnum font-mono text-caption text-ink3">
                 NR {formatBandwidthMHz(nrBw.reportedMHz)} + LTE {formatBandwidthMHz(lteBw.reportedMHz)}
               </p>
             )}
             {bw.hasIdle && (
-              <p className="tnum font-mono text-caption text-ink3">Active only {formatBandwidthMHz(bw.activeMHz)}</p>
+              <p className="tnum font-mono text-caption text-ink3">
+                {t('Active only {value}', { value: formatBandwidthMHz(bw.activeMHz) })}
+              </p>
             )}
           </div>
           <div className="ml-auto">
             {bars === null ? (
               <p className="text-caption text-ink3">
-                Bars <Unavailable label="Signal bars unavailable" />
+                {t('Bars')} <Unavailable label={t('Signal bars unavailable')} />
               </p>
             ) : (
               <SignalBars bars={data.signal_bars} large />
@@ -272,7 +283,7 @@ export default function Overview() {
       </Card>
 
       {(hasNR || hasLTE) && (
-        <Card title="Current cell info">
+        <Card title={t('Current cell info')}>
           <CarrierTable carriers={data.nr_carriers} tech="NR" />
           <CarrierTable carriers={data.lte_carriers} tech="LTE" />
         </Card>

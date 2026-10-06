@@ -6,6 +6,8 @@
 // standard and not a throughput guarantee. Boundaries are inclusive at the
 // lower edge of each level (RSRP -90 is "good", not "fair").
 
+import { t } from '../i18n'
+
 export type SignalMetric = 'rsrp' | 'rsrq' | 'sinr' | 'rssi'
 export type SignalLevel = 'excellent' | 'good' | 'fair' | 'poor' | 'unknown'
 export type SignalTone = 'ok' | 'warn' | 'danger' | 'neutral'
@@ -36,11 +38,11 @@ interface MetricPolicy {
 }
 
 export const LEVEL_LABEL: Record<SignalLevel, string> = {
-  excellent: 'Excellent',
-  good: 'Good',
-  fair: 'Fair',
-  poor: 'Poor',
-  unknown: 'Unavailable',
+  excellent: t('Excellent'),
+  good: t('Good'),
+  fair: t('Fair'),
+  poor: t('Poor'),
+  unknown: t('Unavailable'),
 }
 
 export const LEVEL_TONE: Record<SignalLevel, SignalTone> = {
@@ -85,7 +87,7 @@ export const SIGNAL_POLICY: Record<SignalMetric, MetricPolicy> = {
 }
 
 export const UNAVAILABLE_LABEL = LEVEL_LABEL.unknown
-export const NOT_RATED_LABEL = 'Not rated'
+export const NOT_RATED_LABEL = t('Not rated')
 
 export function signalUnit(metric: SignalMetric): string {
   return SIGNAL_POLICY[metric].unit
@@ -120,7 +122,7 @@ export function signalLegend(metric: SignalMetric): SignalLegendRow[] {
     let range: string
     if (upper === null && min !== null) range = `≥ ${fmt(min)}`
     else if (min === null && upper !== null) range = `< ${fmt(upper)}`
-    else if (min !== null && upper !== null) range = `${fmt(min)} to ${fmt(upper)}`
+    else if (min !== null && upper !== null) range = t('{min} to {max}', { min: fmt(min), max: fmt(upper) })
     else range = ''
     return {
       level: level,

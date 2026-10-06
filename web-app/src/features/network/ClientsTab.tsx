@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 import { api } from '../../data/api'
 import { usePoll } from '../../data/poll'
+import { t } from '../../i18n'
 import type { Client } from '../../types'
 import { ICable, ILaptop, IRefresh, IUsb, IWifi } from '../../icons'
 import { Button } from '../../ui/controls'
@@ -19,7 +20,7 @@ const TD_CLS = 'py-2 pr-4'
 const MONO_TD = `${TD_CLS} tnum font-mono text-meta text-ink2`
 
 const Value = ({ v }: { v: string | undefined }) => (v ? <>{v}</> : <Unavailable />)
-const hostname = (c: Client) => c.hostname || <Unavailable label="No hostname" />
+const hostname = (c: Client) => c.hostname || <Unavailable label={t('No hostname')} />
 
 /** Below `sm`: one stacked row per client with every field the desktop table has (U07). */
 function StackedClients({
@@ -73,14 +74,14 @@ export default function ClientsTab() {
       return (
         <InlineStatus
           kind="error"
-          action={{ label: 'Retry', onClick: refreshAll, loading: clientsPoll.refreshing }}
+          action={{ label: t('Retry'), onClick: refreshAll, loading: clientsPoll.refreshing }}
         >
-          Could not read the connected clients: {clientsPoll.error}
+          {t('Could not read the connected clients: {error}', { error: clientsPoll.error ?? '' })}
         </InlineStatus>
       )
     }
     return (
-      <Loading label="Loading clients" className="space-y-3">
+      <Loading label={t('Loading clients')} className="space-y-3">
         <Skeleton className="h-20" />
         <Skeleton className="h-56" />
       </Loading>
@@ -98,10 +99,10 @@ export default function ClientsTab() {
   return (
     <div className="space-y-3">
       <Card
-        title={`Connected clients (${clients.length})`}
+        title={t('Connected clients ({n})', { n: clients.length })}
         action={
           <Button size="sm" variant="ghost" onClick={refreshAll} loading={clientsPoll.refreshing || usbPoll.refreshing}>
-            <IRefresh size={13} /> Refresh
+            <IRefresh size={13} /> {t('Refresh')}
           </Button>
         }
       >
@@ -109,20 +110,20 @@ export default function ClientsTab() {
           <InlineStatus
             kind="stale"
             className="mb-3"
-            action={{ label: 'Retry', onClick: clientsPoll.refresh, loading: clientsPoll.refreshing }}
+            action={{ label: t('Retry'), onClick: clientsPoll.refresh, loading: clientsPoll.refreshing }}
           >
-            Showing the last client list that loaded. The latest refresh failed: {clientsPoll.error}
+            {t('Showing the last client list that loaded. The latest refresh failed: {error}', { error: clientsPoll.error ?? '' })}
           </InlineStatus>
         )}
         {clients.length === 0 ? (
-          clientsPoll.status === 'ready' && <Empty icon={<ILaptop size={28} />} title="No clients connected" />
+          clientsPoll.status === 'ready' && <Empty icon={<ILaptop size={28} />} title={t('No clients connected')} />
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               { label: 'Wi-Fi', count: grouped.wifi.length, icon: <IWifi size={15} /> },
               { label: 'USB-C', count: grouped.usb.length, icon: <IUsb size={15} /> },
-              { label: 'Ethernet', count: grouped.ethernet.length, icon: <ICable size={15} /> },
-              { label: 'Other', count: grouped.other.length, icon: <ILaptop size={15} /> },
+              { label: t('Ethernet'), count: grouped.ethernet.length, icon: <ICable size={15} /> },
+              { label: t('Other'), count: grouped.other.length, icon: <ILaptop size={15} /> },
             ].map((g) => (
               <div key={g.label} className="rounded-ctl bg-surface2/70 px-3 py-2.5">
                 <div className="flex items-center gap-1.5 text-ink3">
@@ -137,17 +138,17 @@ export default function ClientsTab() {
       </Card>
 
       {grouped.wifi.length > 0 && (
-        <Card title={`Wi-Fi (${grouped.wifi.length})`} pad={false}>
+        <Card title={t('Wi-Fi ({n})', { n: grouped.wifi.length })} pad={false}>
           <StackedClients group="wifi" items={grouped.wifi} badge={bandChip} />
           <div className="hidden overflow-x-auto px-4 pb-3 sm:block">
             <table className="w-full text-body">
               <thead>
                 <tr className="label border-b border-line/8 text-left">
-                  <th className={TH_CLS}>Hostname</th>
+                  <th className={TH_CLS}>{t('Hostname')}</th>
                   <th className={TH_CLS}>IP</th>
-                  <th className={TH_CLS}>Radio</th>
-                  <th className={TH_CLS}>Signal</th>
-                  <th className={TH_CLS}>Link</th>
+                  <th className={TH_CLS}>{t('Radio')}</th>
+                  <th className={TH_CLS}>{t('Signal')}</th>
+                  <th className={TH_CLS}>{t('Link')}</th>
                   <th className="pb-1.5 font-semibold">MAC</th>
                 </tr>
               </thead>
@@ -175,32 +176,34 @@ export default function ClientsTab() {
       )}
 
       {(grouped.usb.length > 0 || usbLink || usbFailed) && (
-        <Card title={`USB-C (${grouped.usb.length})`} pad={false}>
+        <Card title={t('USB-C ({n})', { n: grouped.usb.length })} pad={false}>
           <div className="pb-3">
             <div className="space-y-3 px-4">
               {usbFailed && (
                 <InlineStatus
                   kind={usbPoll.data ? 'stale' : 'error'}
-                  action={{ label: 'Retry', onClick: usbPoll.refresh, loading: usbPoll.refreshing }}
+                  action={{ label: t('Retry'), onClick: usbPoll.refresh, loading: usbPoll.refreshing }}
                 >
                   {usbPoll.data
-                    ? `Showing the last USB link details that loaded. The latest read failed: ${usbPoll.error}`
-                    : `USB link details are unavailable: ${usbPoll.error}`}
+                    ? t('Showing the last USB link details that loaded. The latest refresh failed: {error}', { error: usbPoll.error ?? '' })
+                    : t('USB link details are unavailable: {error}', { error: usbPoll.error ?? '' })}
                 </InlineStatus>
               )}
               {usbLink && (
                 <div className="flex flex-wrap items-center gap-2 rounded-ctl bg-surface2/70 px-3 py-2">
-                  <span className="label">Tether link</span>
+                  <span className="label">{t('Tether link')}</span>
                   <span className="text-body font-bold text-ink">
-                    {usbLink.negotiated_label ?? usbLink.negotiated ?? 'Unknown'}
+                    {usbLink.negotiated_label ?? usbLink.negotiated ?? t('Unknown')}
                     {usbNegotiatedRate && <span className="font-medium text-ink2"> · {usbNegotiatedRate}</span>}
                   </span>
                   {usbLink.at_full_speed === false && usbMaxRate && (
                     <Chip tone="warn" wrap>
-                      {usbLink.max_label ?? 'Higher'} capable · {usbMaxRate} — cable/port limiting
+                      {usbLink.max_label
+                        ? t('{label} capable · {rate} — cable/port limiting', { label: usbLink.max_label, rate: usbMaxRate })
+                        : t('Higher capable · {rate} — cable/port limiting', { rate: usbMaxRate })}
                     </Chip>
                   )}
-                  {usbLink.at_full_speed === true && <Chip tone="ok">Full speed</Chip>}
+                  {usbLink.at_full_speed === true && <Chip tone="ok">{t('Full speed')}</Chip>}
                 </div>
               )}
             </div>
@@ -211,9 +214,9 @@ export default function ClientsTab() {
                   <table className="mt-3 w-full text-body">
                     <thead>
                       <tr className="label border-b border-line/8 text-left">
-                        <th className={TH_CLS}>Hostname</th>
+                        <th className={TH_CLS}>{t('Hostname')}</th>
                         <th className={TH_CLS}>IP</th>
-                        <th className={TH_CLS}>Interface</th>
+                        <th className={TH_CLS}>{t('Interface')}</th>
                         <th className="pb-1.5 font-semibold">MAC</th>
                       </tr>
                     </thead>
@@ -235,22 +238,22 @@ export default function ClientsTab() {
                 </div>
               </>
             ) : (
-              !staleClients && <p className="mt-3 px-4 text-body text-ink3">No USB-C clients connected</p>
+              !staleClients && <p className="mt-3 px-4 text-body text-ink3">{t('No USB-C clients connected')}</p>
             )}
           </div>
         </Card>
       )}
 
       {grouped.ethernet.length > 0 && (
-        <Card title={`Ethernet (${grouped.ethernet.length})`} pad={false}>
+        <Card title={t('Ethernet ({n})', { n: grouped.ethernet.length })} pad={false}>
           <StackedClients group="ethernet" items={grouped.ethernet} />
           <div className="hidden overflow-x-auto px-4 pb-3 sm:block">
             <table className="w-full text-body">
               <thead>
                 <tr className="label border-b border-line/8 text-left">
-                  <th className={TH_CLS}>Hostname</th>
+                  <th className={TH_CLS}>{t('Hostname')}</th>
                   <th className={TH_CLS}>IP</th>
-                  <th className={TH_CLS}>Speed</th>
+                  <th className={TH_CLS}>{t('Speed')}</th>
                   <th className="pb-1.5 font-semibold">MAC</th>
                 </tr>
               </thead>
@@ -274,13 +277,13 @@ export default function ClientsTab() {
       )}
 
       {grouped.other.length > 0 && (
-        <Card title={`Other (${grouped.other.length})`} pad={false}>
+        <Card title={t('Other ({n})', { n: grouped.other.length })} pad={false}>
           <StackedClients group="other" items={grouped.other} />
           <div className="hidden overflow-x-auto px-4 pb-3 sm:block">
             <table className="w-full text-body">
               <thead>
                 <tr className="label border-b border-line/8 text-left">
-                  <th className={TH_CLS}>Hostname</th>
+                  <th className={TH_CLS}>{t('Hostname')}</th>
                   <th className={TH_CLS}>IP</th>
                   <th className="pb-1.5 font-semibold">MAC</th>
                 </tr>

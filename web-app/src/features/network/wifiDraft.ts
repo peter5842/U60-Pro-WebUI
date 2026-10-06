@@ -9,6 +9,7 @@
 // The patch sent to /api/wifi/settings contains ONLY the fields the user actually changed, so an
 // unrelated save can never reset (for example) TX power.
 
+import { t } from '../../i18n'
 import type { WifiAll, WifiBand } from '../../types'
 
 export type BandSuffix = '2g' | '5g'
@@ -56,14 +57,14 @@ export function draftFromBand(band: WifiBand): BandDraft {
 
 export type TxPowerResult = { ok: true; value: number | null } | { ok: false; error: string }
 
-export const TX_POWER_ERROR = 'Enter a whole number from 1 to 100.'
+export const TX_POWER_ERROR = t('Enter a whole number from 1 to 100.')
 
 /** '' is valid and means "keep current" (value null). The firmware accepts integers 1–100 only. */
 export function parseTxPower(text: string): TxPowerResult {
-  const t = text.trim()
-  if (t === '') return { ok: true, value: null }
-  if (!/^\d{1,3}$/.test(t)) return { ok: false, error: TX_POWER_ERROR }
-  const n = Number(t)
+  const trimmed = text.trim()
+  if (trimmed === '') return { ok: true, value: null }
+  if (!/^\d{1,3}$/.test(trimmed)) return { ok: false, error: TX_POWER_ERROR }
+  const n = Number(trimmed)
   if (n < 1 || n > 100) return { ok: false, error: TX_POWER_ERROR }
   return { ok: true, value: n }
 }
@@ -91,15 +92,15 @@ export function validateDraft(draft: BandDraft, base: BandDraft, security?: stri
   const errors: DraftErrors = {}
   if (draft.ssid !== base.ssid) {
     const len = byteLength(draft.ssid)
-    if (len < 1 || len > 32) errors.ssid = 'The network name must be 1–32 bytes.'
+    if (len < 1 || len > 32) errors.ssid = t('The network name must be 1–32 bytes.')
     else if (SSID_FORBIDDEN.test(draft.ssid) || CONTROL.test(draft.ssid))
-      errors.ssid = 'The network name cannot contain quotes, ; $ ` \\ | < > & or control characters.'
+      errors.ssid = t('The network name cannot contain quotes, ; $ ` \\ | < > & or control characters.')
   }
   if (draft.password !== base.password && security !== 'none') {
     const len = byteLength(draft.password)
     const hex64 = len === 64 && /^[0-9a-fA-F]{64}$/.test(draft.password)
-    if (CONTROL.test(draft.password)) errors.password = 'The password cannot contain control characters.'
-    else if (!((len >= 8 && len <= 63) || hex64)) errors.password = 'The password must be 8–63 characters.'
+    if (CONTROL.test(draft.password)) errors.password = t('The password cannot contain control characters.')
+    else if (!((len >= 8 && len <= 63) || hex64)) errors.password = t('The password must be 8–63 characters.')
   }
   const tx = parseTxPower(draft.txpower)
   if (!tx.ok) errors.txpower = tx.error
@@ -128,7 +129,7 @@ export function buildSyncPatch(
   source: WifiBand,
   targetSuffix: BandSuffix,
 ): { patch: WifiPatch; includePassword: boolean } | { error: string } {
-  if (!source.ssid) return { error: 'source SSID is empty' }
+  if (!source.ssid) return { error: t('source SSID is empty') }
   const patch: Record<string, string | number> = {
     [`ssid_${targetSuffix}`]: source.ssid,
     [`hidden_${targetSuffix}`]: source.hidden ? '1' : '0',
@@ -236,12 +237,19 @@ export function verifyApplied(patch: WifiPatch, wifi: WifiAll): Verification {
 }
 
 export function fieldLabel(key: string): string {
-  if (key === 'wifi_onoff') return 'Master Wi-Fi switch'
-  if (key.startsWith('radio')) return 'Radio'
+  if (key === 'wifi_onoff') return t('Master Wi-Fi switch')
+  if (key.startsWith('radio')) return t('Radio')
   const prefix = key.replace(/_(2g|5g)$/, '')
   return (
-    { ssid: 'SSID', key: 'Password', hidden: 'Hidden SSID', channel: 'Channel', htmode: 'Width', txpower: 'TX power', encryption: 'Security' }[prefix] ??
-    prefix
+    {
+      ssid: 'SSID',
+      key: t('Password'),
+      hidden: t('Hidden SSID'),
+      channel: t('Channel'),
+      htmode: t('Width'),
+      txpower: t('TX power'),
+      encryption: t('Security'),
+    }[prefix] ?? prefix
   )
 }
 
@@ -264,9 +272,9 @@ export function describePatch(patch: WifiPatch, band: WifiBand): { label: string
     txpower: band.txpowerPercent != null ? String(band.txpowerPercent) : undefined,
   }
   const show = (prefix: string, v: string | undefined): string => {
-    if (v == null || v === '') return 'unknown'
-    if (prefix === 'hidden') return v === '1' ? 'Yes' : 'No'
-    if (prefix === 'channel') return v === 'auto' ? 'Auto' : v
+    if (v == null || v === '') return t('unknown')
+    if (prefix === 'hidden') return v === '1' ? t('Yes') : t('No')
+    if (prefix === 'channel') return v === 'auto' ? t('Auto') : v
     if (prefix === 'htmode') return formatBandwidthMode(v) ?? v
     if (prefix === 'txpower') return `${v}%`
     return v
@@ -276,7 +284,7 @@ export function describePatch(patch: WifiPatch, band: WifiBand): { label: string
     const prefix = key.replace(/_(2g|5g)$/, '')
     if (!order.includes(prefix)) continue
     const value =
-      prefix === 'key' ? 'Changed (not shown)' : `${show(prefix, prior[prefix])} → ${show(prefix, String(want))}`
+      prefix === 'key' ? t('Changed (not shown)') : `${show(prefix, prior[prefix])} → ${show(prefix, String(want))}`
     rows.push({ prefix, label: fieldLabel(key), value })
   }
   return rows.sort((a, b) => order.indexOf(a.prefix) - order.indexOf(b.prefix)).map(({ label, value }) => ({ label, value }))

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { IAlert, ICheck, IClock, IInfo } from '../icons'
+import { t } from '../i18n'
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
  * (typically `Skeleton`s) stay hidden from assistive tech.
  */
 export function Loading({
-  label = 'Loading',
+  label = t('Loading'),
   children,
   className = '',
 }: {
@@ -149,7 +150,7 @@ export function Loading({
  * Em dash for a value that is not available, with a screen-reader label so it is not read as
  * "em dash" or skipped. Use instead of printing '—' or 'N/A' directly.
  */
-export function Unavailable({ label = 'Unavailable' }: { label?: string }) {
+export function Unavailable({ label = t('Unavailable') }: { label?: string }) {
   return (
     <>
       <span aria-hidden="true">—</span>
@@ -264,7 +265,7 @@ export function SignalBars({ bars, large = false }: { bars?: number; large?: boo
     <div
       className="flex items-end gap-[3px]"
       role="img"
-      aria-label={bars == null ? 'Signal bars unavailable' : `${n} of 5 bars`}
+      aria-label={bars == null ? t('Signal bars unavailable') : t('{n} of 5 bars', { n })}
     >
       {heights.map((h, i) => (
         <div

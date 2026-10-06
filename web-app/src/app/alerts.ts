@@ -1,5 +1,6 @@
 // Alerts derived from the home poll (no extra requests), and their dismissal
 // episodes. Pure: no React, so tools/test-alerts.cjs can load it directly.
+import { t } from '../i18n'
 import type { HomeData } from '../types'
 
 export type AlertLevel = 'warning' | 'error'
@@ -22,6 +23,21 @@ export interface AlertConditions {
 
 const label = (source: string) => source.replaceAll('_', ' ')
 
+/** Display names for the dashboard's freshness sources; unknown ones fall back to the raw name. */
+const SOURCE_NAMES: Record<string, string> = {
+  battery: t('Battery'),
+  cpu: 'CPU',
+  data_usage: t('Data usage'),
+  signal: t('Signal'),
+  speed: t('Throughput'),
+  thermal: t('Temperature'),
+  wan: 'WAN',
+  wan6: 'WAN (IPv6)',
+}
+
+const sourceName = (source: string) =>
+  SOURCE_NAMES[source] ?? `${label(source)[0].toUpperCase()}${label(source).slice(1)}`
+
 export function deriveConditions(data: HomeData | null, error: string | null): AlertConditions {
   const active: Alert[] = []
   const resolved = new Set<string>()
@@ -29,7 +45,7 @@ export function deriveConditions(data: HomeData | null, error: string | null): A
   if (error) {
     active.push({
       id: 'dashboard:refresh', level: 'error',
-      title: 'Dashboard refresh failed; displayed readings may be old',
+      title: t('Dashboard refresh failed; displayed readings may be old'),
       detail: error,
     })
   } else if (data) {
@@ -44,17 +60,17 @@ export function deriveConditions(data: HomeData | null, error: string | null): A
       continue
     }
     const age = freshness.age_ms == null
-      ? 'No successful reading'
-      : `Last reading ${Math.floor(freshness.age_ms / 1000)}s ago`
+      ? t('No successful reading')
+      : t('Last reading {n}s ago', { n: Math.floor(freshness.age_ms / 1000) })
     active.push({
       id, level: 'warning',
-      title: `${label(source)[0].toUpperCase()}${label(source).slice(1)} unavailable`,
+      title: t('{source} unavailable', { source: sourceName(source) }),
       detail: `${age}${freshness.error ? `. ${freshness.error}` : ''}`,
     })
   }
 
   if (data.charge_control_error) {
-    active.push({ id: 'charge-control', level: 'error', title: 'Charge control failed', detail: data.charge_control_error })
+    active.push({ id: 'charge-control', level: 'error', title: t('Charge control failed'), detail: data.charge_control_error })
   } else if (data.charge_control_error === null) {
     resolved.add('charge-control')
   }
@@ -63,9 +79,9 @@ export function deriveConditions(data: HomeData | null, error: string | null): A
   const temp = battery?.temperature_c
   if (typeof temp === 'number') {
     if (temp >= 50) {
-      active.push({ id: 'battery:temperature', level: 'error', title: 'Battery temperature critically high', detail: `${temp.toFixed(0)}°C` })
+      active.push({ id: 'battery:temperature', level: 'error', title: t('Battery temperature critically high'), detail: `${temp.toFixed(0)}°C` })
     } else if (temp >= 45) {
-      active.push({ id: 'battery:temperature', level: 'warning', title: 'Battery temperature high', detail: `${temp.toFixed(0)}°C` })
+      active.push({ id: 'battery:temperature', level: 'warning', title: t('Battery temperature high'), detail: `${temp.toFixed(0)}°C` })
     } else {
       resolved.add('battery:temperature')
     }
@@ -74,9 +90,9 @@ export function deriveConditions(data: HomeData | null, error: string | null): A
   const percent = battery?.percent
   if (battery && typeof percent === 'number') {
     if (!battery.plugged && percent <= 5) {
-      active.push({ id: 'battery:low', level: 'error', title: 'Battery critically low', detail: `${percent}%` })
+      active.push({ id: 'battery:low', level: 'error', title: t('Battery critically low'), detail: `${percent}%` })
     } else if (!battery.plugged && percent <= 15) {
-      active.push({ id: 'battery:low', level: 'warning', title: 'Battery low', detail: `${percent}%` })
+      active.push({ id: 'battery:low', level: 'warning', title: t('Battery low'), detail: `${percent}%` })
     } else {
       resolved.add('battery:low')
     }
@@ -85,9 +101,9 @@ export function deriveConditions(data: HomeData | null, error: string | null): A
   const cpu = thermal?.cpu_temp_c
   if (typeof cpu === 'number') {
     if (cpu >= 90) {
-      active.push({ id: 'cpu:temperature', level: 'error', title: 'CPU temperature critically high', detail: `${cpu}°C` })
+      active.push({ id: 'cpu:temperature', level: 'error', title: t('CPU temperature critically high'), detail: `${cpu}°C` })
     } else if (cpu >= 75) {
-      active.push({ id: 'cpu:temperature', level: 'warning', title: 'CPU temperature elevated', detail: `${cpu}°C` })
+      active.push({ id: 'cpu:temperature', level: 'warning', title: t('CPU temperature elevated'), detail: `${cpu}°C` })
     } else {
       resolved.add('cpu:temperature')
     }

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { IAlert, ICheck, IX } from '../icons'
 import { Button } from './controls'
+import { t } from '../i18n'
 
 // ── Toasts ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ export function toast(text: string, kind: 'ok' | 'err' = 'ok') {
   pushToast?.({ id: ++toastId, text, kind })
 }
 
-export function toastError(e: unknown, fallback = 'Something went wrong') {
+export function toastError(e: unknown, fallback = t('Something went wrong')) {
   toast(e instanceof Error ? e.message : fallback, 'err')
 }
 
@@ -95,25 +96,25 @@ export function Toaster() {
   }, [commit, dismiss])
 
   const render = (list: ToastItem[]) =>
-    list.map((t) => (
+    list.map((item) => (
       <div
-        key={t.id}
-        data-toast={t.kind}
+        key={item.id}
+        data-toast={item.kind}
         className={`pointer-events-auto mt-1.5 flex max-w-sm items-center gap-2 rounded-ctl border py-1 pl-3 pr-1 text-body font-medium shadow-sm ${
-          t.kind === 'ok' ? 'border-ok/25 bg-surface text-ink' : 'border-danger/30 bg-surface text-danger'
+          item.kind === 'ok' ? 'border-ok/25 bg-surface text-ink' : 'border-danger/30 bg-surface text-danger'
         }`}
       >
-        {t.kind === 'ok' ? <ICheck size={15} className="shrink-0 text-ok" /> : <IAlert size={15} className="shrink-0" />}
-        <span className="min-w-0 py-1 text-ink">{t.text}</span>
-        {(t.count ?? 1) > 1 && (
+        {item.kind === 'ok' ? <ICheck size={15} className="shrink-0 text-ok" /> : <IAlert size={15} className="shrink-0" />}
+        <span className="min-w-0 py-1 text-ink">{item.text}</span>
+        {(item.count ?? 1) > 1 && (
           <span aria-hidden="true" className="tnum shrink-0 font-mono text-caption text-ink3">
-            ×{t.count}
+            ×{item.count}
           </span>
         )}
         <button
           type="button"
-          onClick={() => dismiss(t.id)}
-          aria-label="Dismiss notification"
+          onClick={() => dismiss(item.id)}
+          aria-label={t('Dismiss notification')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-ctl text-ink2 transition-colors hover:bg-surface2 hover:text-ink coarse:h-11 coarse:w-11"
         >
           <IX size={14} />
@@ -299,13 +300,13 @@ export function ConfirmHost() {
             )}
             {opts.consequence && (
               <p>
-                <span className="font-semibold text-ink">Effect: </span>
+                <span className="font-semibold text-ink">{t('Effect:')} </span>
                 {opts.consequence}
               </p>
             )}
             {opts.recovery && (
               <p>
-                <span className="font-semibold text-ink">Recovery: </span>
+                <span className="font-semibold text-ink">{t('Recovery:')} </span>
                 {opts.recovery}
               </p>
             )}
@@ -313,10 +314,10 @@ export function ConfirmHost() {
         )}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" data-cancel="" onClick={() => settle(false)}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button variant={kind === 'danger' ? 'danger' : 'primary'} data-confirm="" onClick={() => settle(true)}>
-            {opts.confirmLabel ?? 'Confirm'}
+            {opts.confirmLabel ?? t('Confirm')}
           </Button>
         </div>
       </div>

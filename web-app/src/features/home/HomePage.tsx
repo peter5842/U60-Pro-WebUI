@@ -1,5 +1,6 @@
 import { useHome } from '../../app/HomeContext'
 import { formatBandwidthMHz, formatBytes, formatSpeed, formatUptime, modemMode } from '../../format'
+import { t } from '../../i18n'
 import { IBolt, IDownload, IUpload } from '../../icons'
 import { Card, Chip, Meter, Row, SignalBars, Skeleton, Unavailable } from '../../ui/primitives'
 import { MetricValue } from '../signal/MetricValue'
@@ -63,8 +64,8 @@ export default function HomePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">Overview</h1>
-        <p className="lg:mt-0.5 text-body text-ink2">{signal?.carrier ?? 'Mobile broadband status'}</p>
+        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">{t('Overview')}</h1>
+        <p className="lg:mt-0.5 text-body text-ink2">{signal?.carrier ?? t('Mobile broadband status')}</p>
       </div>
 
       {error && !data && (
@@ -74,29 +75,29 @@ export default function HomePage() {
       )}
 
       {/* Readout band — the page's one graphite beat. Hairline grid via gap-px on a line-tinted ground. */}
-      <section className="band overflow-hidden rounded-panel border border-line/10" aria-label="Live readouts">
+      <section className="band overflow-hidden rounded-panel border border-line/10" aria-label={t('Live readouts')}>
         <div className="grid grid-cols-6 gap-px bg-line/10 xl:grid-cols-5">
           <div className="col-span-6 bg-band p-4 xl:col-span-2">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="label">Signal · RSRP</p>
+                <p className="label">{t('Signal · RSRP')}</p>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span
                     data-testid="home-rsrp"
                     data-level={rsrp.level}
                     className={`tnum font-mono text-5xl font-medium leading-none tracking-[-0.03em] ${rsrp.className}`}
                   >
-                    {rsrp.text ?? <Unavailable label="RSRP unavailable" />}
+                    {rsrp.text ?? <Unavailable label={t('RSRP unavailable')} />}
                   </span>
                   {rsrp.text !== null && <span className="font-display text-sm font-medium text-ink2">dBm</span>}
                 </div>
                 <p data-testid="home-rsrp-word" className={`mt-1.5 text-body font-semibold ${rsrp.className}`}>
-                  {rsrp.text === null ? 'No serving measurement' : rsrp.word}
+                  {rsrp.text === null ? t('No serving measurement') : rsrp.word}
                 </p>
               </div>
               {bars === null ? (
                 <p className="text-caption text-ink3">
-                  Bars <Unavailable label="Signal bars unavailable" />
+                  {t('Bars')} <Unavailable label={t('Signal bars unavailable')} />
                 </p>
               ) : (
                 <SignalBars bars={signal?.signal_bars} large />
@@ -104,14 +105,14 @@ export default function HomePage() {
             </div>
             <div className="tnum mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-meta text-ink2">
               {serving.available && primary ? (
-                <Chip tone={serving.rat?.startsWith('LTE') ? 'lte' : 'nr'}>{serving.label}</Chip>
+                <Chip tone={signal?.primary?.rat === 'lte' ? 'lte' : 'nr'}>{serving.label}</Chip>
               ) : (
                 <span className="text-ink3">
-                  Serving cell <Unavailable label="No serving carrier reported" />
+                  {t('Serving cell')} <Unavailable label={t('No serving carrier reported')} />
                 </span>
               )}
               {serving.pci !== undefined && <span>PCI {serving.pci}</span>}
-              <span>{bars ?? 'Bars unavailable'}</span>
+              <span>{bars ?? t('Bars unavailable')}</span>
             </div>
             <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-1.5 border-t border-line/10 pt-3 font-mono text-meta">
               {(['rsrq', 'sinr', 'rssi'] as const).map((m) => (
@@ -130,7 +131,7 @@ export default function HomePage() {
           </div>
 
           <div className="col-span-6 bg-band p-4 sm:col-span-2 xl:col-span-1">
-            <p className="label">Throughput</p>
+            <p className="label">{t('Throughput')}</p>
             <div className="tnum mt-2 flex gap-x-6 font-mono font-medium text-ink sm:block sm:space-y-1.5">
               <p className="flex items-center gap-1.5 text-base leading-none">
                 <IDownload size={14} className="shrink-0 text-ok" />
@@ -142,32 +143,32 @@ export default function HomePage() {
               </p>
             </div>
             <p className="tnum mt-3 truncate font-mono text-caption text-ink3">
-              Peak down {speed && speed.max_rx_bps > 0 ? formatSpeed(speed.max_rx_bps) : '\u2014'}
+              {t('Peak down {speed}', { speed: speed && speed.max_rx_bps > 0 ? formatSpeed(speed.max_rx_bps) : '\u2014' })}
             </p>
           </div>
 
           <div className="col-span-3 bg-band p-4 sm:col-span-2 xl:col-span-1">
-            <p className="label">Mode</p>
+            <p className="label">{t('Mode')}</p>
             <p className="tnum mt-2 font-mono text-2xl font-medium leading-none text-ink">{mode}</p>
             <p className="mt-1.5 text-meta text-ink2">
-              {reported} carrier{reported !== 1 ? 's' : ''} reported
+              {reported === 1 ? t('{n} carrier reported', { n: reported }) : t('{n} carriers reported', { n: reported })}
             </p>
             {reported > 0 && (
               <p className="text-caption text-ink3">
-                {active} active{idle > 0 ? ` · ${idle} idle` : ''}
+                {idle > 0 ? t('{active} active · {idle} idle', { active, idle }) : t('{active} active', { active })}
               </p>
             )}
             <div className="mt-3 flex flex-wrap gap-1">
               {nrBw > 0 && <Chip tone="nr">NR {formatBandwidthMHz(nrBw)}</Chip>}
               {lteBw > 0 && <Chip tone="lte">LTE {formatBandwidthMHz(lteBw)}</Chip>}
-              {totalBw <= 0 && <span className="text-caption text-ink3">No bandwidth reported</span>}
+              {totalBw <= 0 && <span className="text-caption text-ink3">{t('No bandwidth reported')}</span>}
             </div>
-            {totalBw > 0 && <p className="mt-1 text-caption text-ink3">Sum of reported carriers</p>}
+            {totalBw > 0 && <p className="mt-1 text-caption text-ink3">{t('Sum of reported carriers')}</p>}
           </div>
 
           <div className="col-span-3 bg-band p-4 sm:col-span-2 xl:col-span-1">
             <p className="label flex items-center gap-1">
-              Battery {battery?.charging && <IBolt size={12} className="text-warn" />}
+              {t('Battery')} {battery?.charging && <IBolt size={12} className="text-warn" />}
             </p>
             <p className="tnum mt-2 font-mono text-2xl font-medium leading-none text-ink">
               {battery?.percent != null ? `${battery.percent}%` : '\u2014'}
@@ -183,7 +184,7 @@ export default function HomePage() {
 
       {/* Radio details */}
       {signal && (signal.lte_carriers.length > 0 || signal.nr_carriers.length > 0) && (
-        <Card title="Reported carriers">
+        <Card title={t('Reported carriers')}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <p className="label mb-1.5 text-accent">LTE</p>
@@ -193,12 +194,12 @@ export default function HomePage() {
                     <Chip key={i} tone="lte">
                       {c.label} · {c.band}
                       {c.rsrp != null ? ` · ${c.rsrp} dBm` : ''}
-                      {c.active === false ? ' · idle' : ''}
+                      {c.active === false ? ` · ${t('idle')}` : ''}
                     </Chip>
                   ))}
                 </div>
               ) : (
-                <p className="text-body text-ink3">No LTE carrier reported</p>
+                <p className="text-body text-ink3">{t('No LTE carrier reported')}</p>
               )}
             </div>
             <div>
@@ -211,12 +212,12 @@ export default function HomePage() {
                     <Chip key={i} tone="nr">
                       {c.label} · {c.band}
                       {c.rsrp != null ? ` · ${c.rsrp} dBm` : ''}
-                      {c.active === false ? ' · idle' : ''}
+                      {c.active === false ? ` · ${t('idle')}` : ''}
                     </Chip>
                   ))}
                 </div>
               ) : (
-                <p className="text-body text-ink3">No NR carrier reported</p>
+                <p className="text-body text-ink3">{t('No NR carrier reported')}</p>
               )}
             </div>
           </div>
@@ -225,21 +226,21 @@ export default function HomePage() {
 
       {/* Details row */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <Card title="Connection">
-          <Row label="Operator" value={signal?.carrier ?? '\u2014'} />
+        <Card title={t('Connection')}>
+          <Row label={t('Operator')} value={signal?.carrier ?? '\u2014'} />
           <Row label="IPv4" value={wan?.ipv4 ?? '\u2014'} mono />
-          <Row label="Gateway" value={wan?.gateway ?? '\u2014'} mono />
+          <Row label={t('Gateway')} value={wan?.gateway ?? '\u2014'} mono />
           <Row label="IPv6" value={wan6?.ipv6 ?? '\u2014'} mono wrap />
-          {wan6?.prefix && <Row label="IPv6 prefix" value={wan6.prefix} mono wrap />}
+          {wan6?.prefix && <Row label={t('IPv6 prefix')} value={wan6.prefix} mono wrap />}
           {wan?.dns && wan.dns.length > 0 && (
             <Row label="DNS" value={wan.dns.filter((d) => !d.includes(':')).join(', ') || '\u2014'} mono wrap />
           )}
         </Card>
 
-        <Card title="Device">
-          <Row label="Model" value={device?.model ?? '\u2014'} />
-          <Row label="Firmware" value={device?.firmware ?? '\u2014'} />
-          <Row label="Uptime" value={formatUptime(device?.uptime_secs)} />
+        <Card title={t('Device')}>
+          <Row label={t('Model')} value={device?.model ?? '\u2014'} />
+          <Row label={t('Firmware')} value={device?.firmware ?? '\u2014'} />
+          <Row label={t('Uptime')} value={formatUptime(device?.uptime_secs)} />
           <div className="mt-2 space-y-2 border-t border-line/8 pt-2.5">
             <div>
               <div className="mb-1 flex justify-between text-caption">
@@ -250,7 +251,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="mb-1 flex justify-between text-caption">
-                <span className="font-medium text-ink2">Memory</span>
+                <span className="font-medium text-ink2">{t('Memory')}</span>
                 <span className="tnum font-mono text-ink2">{mem ? `${mem.usage_pct.toFixed(0)}%` : '\u2014'}</span>
               </div>
               <Meter pct={mem?.usage_pct ?? 0} tone="bg-warn" />
@@ -258,7 +259,7 @@ export default function HomePage() {
           </div>
         </Card>
 
-        <Card title="Data usage">
+        <Card title={t('Data usage')}>
           {usage ? (
             <div className="space-y-2.5">
               {homeUsageRows(usage).map(({ label, rx, tx, total }) => (
@@ -272,14 +273,14 @@ export default function HomePage() {
                       <IUpload size={12} /> <Bytes value={tx} />
                     </span>
                     <span className="text-ink2">
-                      <Bytes value={total} /> <span className="font-sans text-meta font-normal text-ink3">total</span>
+                      <Bytes value={total} /> <span className="font-sans text-meta font-normal text-ink3">{t('total')}</span>
                     </span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-body text-ink3">Not available</p>
+            <p className="text-body text-ink3">{t('Not available')}</p>
           )}
         </Card>
       </div>
@@ -294,7 +295,7 @@ function Bytes({ value }: { value: number | null }) {
 
 function batteryState(battery: BatteryInfo | null | undefined): string {
   if (!battery) return '\u2014'
-  if (battery.charging) return 'Charging'
-  if (battery.status === 'Full') return 'Full'
-  return battery.plugged ? 'Plugged in, not charging' : 'On battery'
+  if (battery.charging) return t('Charging')
+  if (battery.status === 'Full') return t('Full')
+  return battery.plugged ? t('Plugged in, not charging') : t('On battery')
 }

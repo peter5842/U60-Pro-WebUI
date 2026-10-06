@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { t } from '../../../i18n'
 import type { CarrierComponent, SignalInfo } from '../../../types'
 import { Button } from '../../../ui/controls'
 import { Card, Chip, Unavailable } from '../../../ui/primitives'
@@ -6,8 +7,10 @@ import { ratName, type CellTuple, type Rat } from './confirmations'
 import type { Ops } from './ops'
 
 function lockName(c: CellTuple): string {
-  const band = c.tech === 'nr' && c.band ? `, band n${c.band}` : ''
-  return `Lock ${ratName(c.tech)} cell PCI ${c.pci}, ${c.tech === 'nr' ? 'NR-ARFCN' : 'EARFCN'} ${c.earfcn}${band}`
+  const cell = { rat: ratName(c.tech), pci: c.pci, arfcnName: c.tech === 'nr' ? 'NR-ARFCN' : 'EARFCN', arfcn: c.earfcn }
+  return c.tech === 'nr' && c.band
+    ? t('Lock {rat} cell PCI {pci}, {arfcnName} {arfcn}, band n{band}', { ...cell, band: c.band })
+    : t('Lock {rat} cell PCI {pci}, {arfcnName} {arfcn}', cell)
 }
 
 const num = (v: number | undefined) => (v === undefined ? <Unavailable /> : v)
@@ -45,20 +48,24 @@ export function ServingCells({ signal, ops, onLock }: { signal: SignalInfo; ops:
       size="sm"
       variant="outline"
       disabled={r.tuple === null || ops.busy}
-      aria-label={r.tuple ? lockName(r.tuple) : `Lock unavailable for ${r.tech === 'nr' ? 'NR' : 'LTE'} ${r.carrier.band}: no valid PCI reported`}
+      aria-label={
+        r.tuple
+          ? lockName(r.tuple)
+          : t('Lock unavailable for {tech} {band}: no valid PCI reported', { tech: r.tech === 'nr' ? 'NR' : 'LTE', band: r.carrier.band })
+      }
       onClick={() => r.tuple && onLock(r.tuple)}
     >
-      Lock
+      {t('Lock')}
     </Button>
   )
-  const bandCls = (t: Rat) => `font-semibold ${t === 'nr' ? 'text-nr' : 'text-accent'}`
+  const bandCls = (rat: Rat) => `font-semibold ${rat === 'nr' ? 'text-nr' : 'text-accent'}`
   const chipTone = (r: Row) => (r.carrier.label === 'PCC' ? (r.tech === 'nr' ? 'nr' : 'lte') : 'default')
 
   return (
-    <Card title="Serving cells">
-      <p className="mb-3 text-meta text-ink2">Active cells. Locking asks for confirmation first.</p>
+    <Card title={t('Serving cells')}>
+      <p className="mb-3 text-meta text-ink2">{t('Active cells. Locking asks for confirmation first.')}</p>
 
-      <ul aria-label="Serving cells" className="divide-y divide-line/6 sm:hidden">
+      <ul aria-label={t('Serving cells')} className="divide-y divide-line/6 sm:hidden">
         {rows.map((r) => (
           <li key={r.key} className="py-3 first:pt-0 last:pb-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -69,7 +76,7 @@ export function ServingCells({ signal, ops, onLock }: { signal: SignalInfo; ops:
             <dl className="tnum mt-2 grid grid-cols-3 gap-x-3 gap-y-2 font-mono text-meta">
               <Field term="PCI">{num(r.carrier.pci)}</Field>
               <Field term={r.tech === 'nr' ? 'NR-ARFCN' : 'EARFCN'}>{r.carrier.earfcn}</Field>
-              <Field term="BW">{r.carrier.bandwidth || <Unavailable />}</Field>
+              <Field term={t('BW')}>{r.carrier.bandwidth || <Unavailable />}</Field>
               <Field term="RSRP">{num(r.carrier.rsrp)}</Field>
               <Field term="SINR">{num(r.carrier.sinr)}</Field>
             </dl>
@@ -81,15 +88,15 @@ export function ServingCells({ signal, ops, onLock }: { signal: SignalInfo; ops:
         <table className="w-full text-left text-body">
           <thead>
             <tr className="label border-b border-line/8">
-              <th className="pb-1.5 pr-3 font-semibold">Type</th>
-              <th className="pb-1.5 pr-3 font-semibold">Band</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Type')}</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('Band')}</th>
               <th className="pb-1.5 pr-3 font-semibold">PCI</th>
               <th className="pb-1.5 pr-3 font-semibold">ARFCN</th>
-              <th className="pb-1.5 pr-3 font-semibold">BW</th>
+              <th className="pb-1.5 pr-3 font-semibold">{t('BW')}</th>
               <th className="pb-1.5 pr-3 font-semibold">RSRP</th>
               <th className="pb-1.5 pr-3 font-semibold">SINR</th>
               <th className="pb-1.5">
-                <span className="sr-only">Action</span>
+                <span className="sr-only">{t('Action')}</span>
               </th>
             </tr>
           </thead>

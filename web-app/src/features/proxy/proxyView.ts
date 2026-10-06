@@ -1,57 +1,58 @@
 // Pure view helpers for the Proxy group (tested in tools/test-proxy-view.cjs).
 
+import { t } from '../../i18n'
 import type { ChipTone } from '../../ui/primitives'
 import type { ProxyMode, ProxyNode, ProxyPreset, ProxyStatus, ProxyUsage } from '../../types'
 
 export const MODE_OPTIONS: { value: ProxyMode; label: string }[] = [
-  { value: 'rule', label: 'Rule' },
-  { value: 'global', label: 'Global' },
-  { value: 'direct', label: 'Direct' },
+  { value: 'rule', label: t('Rule') },
+  { value: 'global', label: t('Global') },
+  { value: 'direct', label: t('Direct') },
 ]
 
 export const MODE_HELP: Record<ProxyMode, string> = {
-  rule: 'Traffic follows the routing preset (Settings → Routing).',
-  global: 'All proxied traffic goes through the selected node.',
-  direct: 'mihomo stays up but nothing is proxied.',
+  rule: t('Traffic follows the routing preset (Settings → Routing).'),
+  global: t('All proxied traffic goes through the selected node.'),
+  direct: t('mihomo stays up but nothing is proxied.'),
 }
 
 export const PRESET_OPTIONS: { value: ProxyPreset; label: string; help: string }[] = [
   {
     value: 'bypass_cn',
-    label: 'Bypass mainland China',
-    help: 'Mainland China sites and LAN addresses go direct; everything else uses the proxy.',
+    label: t('Bypass mainland China'),
+    help: t('Mainland China sites and LAN addresses go direct; everything else uses the proxy.'),
   },
   {
     value: 'gfw',
-    label: 'GFW list only',
-    help: 'Only sites on the GFW list use the proxy; everything else goes direct.',
+    label: t('GFW list only'),
+    help: t('Only sites on the GFW list use the proxy; everything else goes direct.'),
   },
   {
     value: 'proxy_all',
-    label: 'Proxy everything',
-    help: 'Everything except LAN addresses uses the proxy.',
+    label: t('Proxy everything'),
+    help: t('Everything except LAN addresses uses the proxy.'),
   },
 ]
 
 export const INTERVAL_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: 'Manual only' },
-  { value: 6, label: 'Every 6 hours' },
-  { value: 12, label: 'Every 12 hours' },
-  { value: 24, label: 'Daily' },
-  { value: 72, label: 'Every 3 days' },
-  { value: 168, label: 'Weekly' },
+  { value: 0, label: t('Manual only') },
+  { value: 6, label: t('Every 6 hours') },
+  { value: 12, label: t('Every 12 hours') },
+  { value: 24, label: t('Daily') },
+  { value: 72, label: t('Every 3 days') },
+  { value: 168, label: t('Weekly') },
 ]
 
 export function intervalLabel(hours: number): string {
-  return INTERVAL_OPTIONS.find((o) => o.value === hours)?.label ?? `Every ${hours} h`
+  return INTERVAL_OPTIONS.find((o) => o.value === hours)?.label ?? t('Every {n} h', { n: hours })
 }
 
 export function serviceState(s: ProxyStatus | null | undefined): { label: string; tone: ChipTone } {
-  if (!s) return { label: 'Unknown', tone: 'default' }
-  if (!s.installed) return { label: 'Not installed', tone: 'danger' }
-  if (s.running) return { label: 'Running', tone: 'ok' }
-  if (s.enabled) return { label: s.last_error ? 'Failing' : 'Starting', tone: s.last_error ? 'danger' : 'warn' }
-  return { label: 'Stopped', tone: 'default' }
+  if (!s) return { label: t('Unknown'), tone: 'default' }
+  if (!s.installed) return { label: t('Not installed'), tone: 'danger' }
+  if (s.running) return { label: t('Running'), tone: 'ok' }
+  if (s.enabled) return { label: s.last_error ? t('Failing') : t('Starting'), tone: s.last_error ? 'danger' : 'warn' }
+  return { label: t('Stopped'), tone: 'default' }
 }
 
 /** The node traffic actually leaves through, e.g. "AUTO → HK 01". */
@@ -100,7 +101,7 @@ export function delayTone(delay: number | undefined): ChipTone {
 
 export function delayLabel(delay: number | undefined): string {
   if (delay === undefined) return '—'
-  return delay === 0 ? 'timeout' : `${delay} ms`
+  return delay === 0 ? t('timeout') : `${delay} ms`
 }
 
 export type NodeSort = 'name' | 'delay'
@@ -120,32 +121,32 @@ export function visibleNodes(nodes: ProxyNode[], query: string, sort: NodeSort):
 /** Relative time for an RFC 3339 timestamp, e.g. "5 min ago". */
 export function ago(iso: string | undefined, now = Date.now()): string | undefined {
   if (!iso) return undefined
-  const t = Date.parse(iso)
-  if (!Number.isFinite(t)) return undefined
-  const secs = Math.max(0, Math.round((now - t) / 1000))
-  if (secs < 60) return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`
-  if (secs < DAY) return `${Math.floor(secs / 3600)} h ago`
-  return `${Math.floor(secs / DAY)} d ago`
+  const time = Date.parse(iso)
+  if (!Number.isFinite(time)) return undefined
+  const secs = Math.max(0, Math.round((now - time) / 1000))
+  if (secs < 60) return t('just now')
+  if (secs < 3600) return t('{n} min ago', { n: Math.floor(secs / 60) })
+  if (secs < DAY) return t('{n} h ago', { n: Math.floor(secs / 3600) })
+  return t('{n} d ago', { n: Math.floor(secs / DAY) })
 }
 
 /** Local validation mirroring the agent; returns an error message or undefined. */
 export function validateSubscription(name: string, url: string): { name?: string; url?: string } {
   const errors: { name?: string; url?: string } = {}
   const n = name.trim()
-  if (!n) errors.name = 'Enter a name'
-  else if ([...n].length > 32) errors.name = 'At most 32 characters'
+  if (!n) errors.name = t('Enter a name')
+  else if ([...n].length > 32) errors.name = t('At most 32 characters')
   const u = url.trim()
-  if (!u) errors.url = 'Paste the subscription link'
-  else if (!/^https?:\/\/[^\s/?#@]+/i.test(u)) errors.url = 'Must be an http:// or https:// link'
-  else if (/\s/.test(u)) errors.url = 'The link must not contain spaces'
+  if (!u) errors.url = t('Paste the subscription link')
+  else if (!/^https?:\/\/[^\s/?#@]+/i.test(u)) errors.url = t('Must be an http:// or https:// link')
+  else if (/\s/.test(u)) errors.url = t('The link must not contain spaces')
   return errors
 }
 
 export function validatePort(text: string): { ok: true; port: number } | { ok: false; error: string } {
-  if (!/^\d+$/.test(text.trim())) return { ok: false, error: 'Enter a port number' }
+  if (!/^\d+$/.test(text.trim())) return { ok: false, error: t('Enter a port number') }
   const port = Number(text)
-  if (port < 1024 || port > 65535) return { ok: false, error: '1024 to 65535' }
-  if ([2222, 8080, 9090, 9097].includes(port)) return { ok: false, error: 'Reserved by the router' }
+  if (port < 1024 || port > 65535) return { ok: false, error: t('1024 to 65535') }
+  if ([2222, 8080, 9090, 9097].includes(port)) return { ok: false, error: t('Reserved by the router') }
   return { ok: true, port }
 }

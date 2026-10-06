@@ -8,6 +8,7 @@ import { confirm, toastError } from '../../ui/feedback'
 import { Card, Chip, InlineStatus, Skeleton, Stat } from '../../ui/primitives'
 import CopyField from './CopyField'
 import { currentRoute, MODE_HELP, MODE_OPTIONS, serviceState } from './proxyView'
+import { t } from '../../i18n'
 
 type Busy = 'start' | 'stop' | 'restart' | 'mode' | null
 
@@ -20,11 +21,11 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
     if (busy) return
     if (action === 'stop' && s?.tun) {
       const ok = await confirm({
-        title: 'Stop the proxy?',
-        body: 'Transparent proxy (TUN) is on. Devices go back to the normal route.',
+        title: t('Stop the proxy?'),
+        body: t('Transparent proxy (TUN) is on. Devices go back to the normal route.'),
         kind: 'connection',
-        consequence: 'Connections through mihomo drop.',
-        recovery: 'Start it again here.',
+        consequence: t('Connections through mihomo drop.'),
+        recovery: t('Start it again here.'),
       })
       if (!ok) return
     }
@@ -32,7 +33,7 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
     try {
       status.mutate(await api.proxyService(action))
     } catch (e) {
-      toastError(e, `Failed to ${action} the proxy`)
+      toastError(e, { start: t('Failed to start the proxy'), stop: t('Failed to stop the proxy'), restart: t('Failed to restart the proxy') }[action])
       status.refresh()
     } finally {
       setBusy(null)
@@ -46,7 +47,7 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
       status.mutate(await api.proxySettings({ mode: modeDraft }))
       setModeDraft(null)
     } catch (e) {
-      toastError(e, 'Failed to change the mode')
+      toastError(e, t('Failed to change the mode'))
     } finally {
       setBusy(null)
     }
@@ -56,42 +57,42 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
   if (!s) {
     return (
       <InlineStatus kind="error" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-        Proxy status could not be read{status.error ? `: ${status.error}` : '.'}
+        {status.error ? t('Proxy status could not be read: {error}', { error: status.error }) : t('Proxy status could not be read.')}
       </InlineStatus>
     )
   }
 
   const state = serviceState(s)
-  const t = s.traffic
+  const traffic = s.traffic
   const mode = modeDraft ?? s.mode ?? 'rule'
 
   return (
     <>
       {status.status === 'stale' && (
         <InlineStatus kind="stale" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-          Showing the last status read. The latest refresh failed.
+          {t('Showing the last status read. The latest refresh failed.')}
         </InlineStatus>
       )}
       {!s.installed && (
         <InlineStatus kind="error">
-          mihomo is not installed on the router. Install it from a computer with{' '}
-          <code className="font-mono text-meta">scripts/deploy-mihomo.sh</code>.
+          {t('mihomo is not installed on the router. Install it from a computer with')}{' '}
+          <code className="font-mono text-meta">scripts/deploy-mihomo.sh</code>
         </InlineStatus>
       )}
       {s.notice && <InlineStatus kind="warn">{s.notice}</InlineStatus>}
       {s.last_error && !s.running && <InlineStatus kind="error">{s.last_error}</InlineStatus>}
 
       <Card
-        title="Service"
+        title={t('Service')}
         action={
           <div className="flex gap-2">
             {s.running ? (
               <>
                 <Button size="sm" variant="ghost" onClick={() => void service('restart')} loading={busy === 'restart'} disabled={!!busy}>
-                  Restart
+                  {t('Restart')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => void service('stop')} loading={busy === 'stop'} disabled={!!busy}>
-                  Stop
+                  {t('Stop')}
                 </Button>
               </>
             ) : (
@@ -102,7 +103,7 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
                 loading={busy === 'start'}
                 disabled={!!busy || !s.installed}
               >
-                Start
+                {t('Start')}
               </Button>
             )}
           </div>
@@ -110,31 +111,31 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
       >
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
           <div className="min-w-0">
-            <p className="label">Status</p>
+            <p className="label">{t('Status')}</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               <Chip tone={state.tone}>{state.label}</Chip>
               {s.tun_active && <Chip tone="accent">TUN</Chip>}
             </div>
           </div>
           <div className="col-span-2 min-w-0 sm:col-span-1">
-            <p className="label">Route</p>
+            <p className="label">{t('Route')}</p>
             <p className="mt-1 break-words text-body font-semibold text-ink">{currentRoute(s) ?? '—'}</p>
-            {s.mode && <p className="mt-0.5 text-meta text-ink3">{s.mode} mode</p>}
+            {s.mode && <p className="mt-0.5 text-meta text-ink3">{MODE_OPTIONS.find((o) => o.value === s.mode)?.label}</p>}
           </div>
-          <Stat label="Download" value={t?.down_rate !== undefined ? formatSpeed(t.down_rate) : '—'} sub={formatBytes(t?.down_total)} />
-          <Stat label="Upload" value={t?.up_rate !== undefined ? formatSpeed(t.up_rate) : '—'} sub={formatBytes(t?.up_total)} />
-          <Stat label="Connections" value={t?.connections ?? '—'} />
-          <Stat label="Memory" value={formatBytes(s.rss_bytes)} />
-          <Stat label="Uptime" value={s.running ? formatUptime(s.uptime_secs) : '—'} sub={s.restarts ? `${s.restarts} auto-restarts` : undefined} />
-          <Stat label="Core" value={s.version ?? '—'} sub="mihomo" />
+          <Stat label={t('Download')} value={traffic?.down_rate !== undefined ? formatSpeed(traffic.down_rate) : '—'} sub={formatBytes(traffic?.down_total)} />
+          <Stat label={t('Upload')} value={traffic?.up_rate !== undefined ? formatSpeed(traffic.up_rate) : '—'} sub={formatBytes(traffic?.up_total)} />
+          <Stat label={t('Connections')} value={traffic?.connections ?? '—'} />
+          <Stat label={t('Memory')} value={formatBytes(s.rss_bytes)} />
+          <Stat label={t('Uptime')} value={s.running ? formatUptime(s.uptime_secs) : '—'} sub={s.restarts ? t('{n} auto-restarts', { n: s.restarts }) : undefined} />
+          <Stat label={t('Core')} value={s.version ?? '—'} sub="mihomo" />
         </div>
       </Card>
 
-      <Card title="Mode">
+      <Card title={t('Mode')}>
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Segmented<ProxyMode>
-              label="Proxy mode"
+              label={t('Proxy mode')}
               options={MODE_OPTIONS}
               value={mode}
               onChange={setModeDraft}
@@ -142,7 +143,7 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
             />
             {modeDraft && modeDraft !== s.mode && (
               <Button variant="primary" onClick={() => void applyMode()} loading={busy === 'mode'}>
-                Apply
+                {t('Apply')}
               </Button>
             )}
           </div>
@@ -150,30 +151,31 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
         </div>
       </Card>
 
-      <Card title="Connect devices">
+      <Card title={t('Connect devices')}>
         {s.tun ? (
           <p className="text-body text-ink2">
-            Transparent proxy (TUN) is {s.tun_active ? 'on' : 'enabled but not active yet'}: every device on this
-            router&apos;s Wi-Fi or USB is routed through mihomo automatically. No device setup is needed.
+            {s.tun_active
+              ? t('Transparent proxy (TUN) is on: every device on this router’s Wi-Fi or USB is routed through mihomo automatically. No device setup is needed.')
+              : t('Transparent proxy (TUN) is enabled but not active yet. Once mihomo runs, every device on this router’s Wi-Fi or USB is routed through it automatically.')}
           </p>
         ) : (
           <div className="space-y-4">
             <p className="text-meta text-ink2">
-              Point a device at the proxy, or turn on transparent proxy in Settings to cover every device.
+              {t('Point a device at the proxy, or turn on transparent proxy in Settings to cover every device.')}
             </p>
             {s.pac_url && (
               <CopyField
-                label="Automatic proxy (PAC) URL"
+                label={t('Automatic proxy (PAC) URL')}
                 value={s.pac_url}
-                hint="Recommended: if mihomo stops, devices fall back to a direct connection."
+                hint={t('Recommended: if mihomo stops, devices fall back to a direct connection.')}
               />
             )}
-            {s.proxy_address && <CopyField label="Manual proxy (HTTP / SOCKS5)" value={s.proxy_address} />}
+            {s.proxy_address && <CopyField label={t('Manual proxy (HTTP / SOCKS5)')} value={s.proxy_address} />}
             <ul className="list-disc space-y-1 pl-5 text-meta text-ink2">
-              <li>iPhone / iPad: Settings → Wi-Fi → ⓘ → Configure Proxy → Automatic → URL</li>
-              <li>macOS: System Settings → Network → Wi-Fi → Details → Proxies → Automatic proxy configuration</li>
-              <li>Windows: Settings → Network &amp; internet → Proxy → Use setup script</li>
-              <li>Android: Wi-Fi → network → Edit → Proxy → Proxy Auto-Config</li>
+              <li>{t('iPhone / iPad: Settings → Wi-Fi → ⓘ → Configure Proxy → Automatic → URL')}</li>
+              <li>{t('macOS: System Settings → Network → Wi-Fi → Details → Proxies → Automatic proxy configuration')}</li>
+              <li>{t('Windows: Settings → Network & internet → Proxy → Use setup script')}</li>
+              <li>{t('Android: Wi-Fi → network → Edit → Proxy → Proxy Auto-Config')}</li>
             </ul>
           </div>
         )}

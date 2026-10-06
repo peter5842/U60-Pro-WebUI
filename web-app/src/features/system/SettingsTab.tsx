@@ -3,6 +3,7 @@ import { api } from '../../data/api'
 import { API_BASE } from '../../data/client'
 import { useResource, type PollResult } from '../../data/poll'
 import { formatUptime } from '../../format'
+import { lang, setLang, t, type Lang } from '../../i18n'
 import type { DeviceInfo, SimInfo } from '../../types'
 import { ILogout, IPower, IRefresh, IRestart } from '../../icons'
 import { useTheme, type ThemePref } from '../../app/theme'
@@ -35,15 +36,15 @@ import {
 function ReadNote({ res, what }: { res: Pick<PollResult<unknown>, 'status' | 'error' | 'refresh' | 'refreshing'>; what: string }) {
   if (res.status === 'error') {
     return (
-      <InlineStatus kind="error" className="mb-3" action={{ label: 'Retry', onClick: res.refresh, loading: res.refreshing }}>
-        {what} could not be read{res.error ? `: ${res.error}` : '.'}
+      <InlineStatus kind="error" className="mb-3" action={{ label: t('Retry'), onClick: res.refresh, loading: res.refreshing }}>
+        {res.error ? t('{what} could not be read: {error}', { what, error: res.error }) : t('{what} could not be read.', { what })}
       </InlineStatus>
     )
   }
   if (res.status === 'stale') {
     return (
-      <InlineStatus kind="stale" className="mb-3" action={{ label: 'Retry', onClick: res.refresh, loading: res.refreshing }}>
-        Showing the last reading of {what.toLowerCase()}; the latest refresh failed.
+      <InlineStatus kind="stale" className="mb-3" action={{ label: t('Retry'), onClick: res.refresh, loading: res.refreshing }}>
+        {t('Showing the last reading of {what}; the latest refresh failed.', { what: what.toLowerCase() })}
       </InlineStatus>
     )
   }
@@ -143,7 +144,7 @@ function UsbSection() {
         verdict: { state: 'waiting' },
       })
     } catch (e) {
-      toastError(e, 'Failed to set USB mode')
+      toastError(e, t('Failed to set USB mode'))
     } finally {
       lock.current = false
       setBusy(null)
@@ -167,23 +168,23 @@ function UsbSection() {
     try {
       if (enabled) {
         const ok = await confirm({
-          title: 'Apply NCM after every boot?',
-          body: 'The agent will switch USB to experimental NCM after each boot, once the stock USB stack has settled.',
-          confirmLabel: 'Enable',
+          title: t('Apply NCM after every boot?'),
+          body: t('The agent will switch USB to experimental NCM after each boot, once the stock USB stack has settled.'),
+          confirmLabel: t('Enable'),
           kind: 'connection',
           details: [
-            { label: 'Operation', value: 'Persist NCM as the boot default' },
-            { label: 'Boot default now', value: usbModeLabel(bootDefault) },
+            { label: t('Operation'), value: t('Persist NCM as the boot default') },
+            { label: t('Boot default now'), value: usbModeLabel(bootDefault) },
           ],
-          consequence: 'After each boot USB re-enumerates once, and a computer connected by USB loses its link briefly.',
-          recovery: 'Turn this off here, or keep a Wi-Fi path open to the dashboard to do so.',
+          consequence: t('After each boot USB re-enumerates once, and a computer connected by USB loses its link briefly.'),
+          recovery: t('Turn this off here, or keep a Wi-Fi path open to the dashboard to do so.'),
         })
         if (!ok) return
       }
       await api.usbDefaultMode(enabled ? 'ncm' : 'ecm', enabled ? { confirm_experimental: true } : undefined)
       status.refresh()
     } catch (e) {
-      toastError(e, 'Failed to set USB boot default')
+      toastError(e, t('Failed to set USB boot default'))
     } finally {
       lock.current = false
       setBusy(null)
@@ -201,7 +202,7 @@ function UsbSection() {
       await api.usbPowerbank(on)
       charger.mutate({ ...(charger.data ?? {}), otg_powerbank_state: on ? 1 : 0 })
     } catch (e) {
-      toastError(e, 'Failed to set powerbank')
+      toastError(e, t('Failed to set powerbank'))
     } finally {
       lock.current = false
       setBusy(null)
@@ -213,52 +214,54 @@ function UsbSection() {
   const scheduled = scheduledMode(attempt?.pending ?? null, attempt?.verdict ?? null)
 
   return (
-    <Card title="USB mode">
+    <Card title={t('USB mode')}>
       <div className="space-y-3">
         {status.status === 'loading' && (
-          <Loading label="Loading USB status">
+          <Loading label={t('Loading USB status')}>
             <Skeleton className="h-9 w-full" />
           </Loading>
         )}
 
         {status.status === 'error' && (
-          <InlineStatus kind="error" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-            USB status is unavailable{status.error ? `: ${status.error}` : '.'} USB mode changes are disabled until it can be read.
+          <InlineStatus kind="error" action={{ label: t('Retry'), onClick: status.refresh, loading: status.refreshing }}>
+            {status.error
+              ? t('USB status is unavailable: {error} USB mode changes are disabled until it can be read.', { error: status.error })
+              : t('USB status is unavailable. USB mode changes are disabled until it can be read.')}
           </InlineStatus>
         )}
         {status.status === 'stale' && (
-          <InlineStatus kind="stale" action={{ label: 'Retry', onClick: status.refresh, loading: status.refreshing }}>
-            The latest USB status read failed. Mode changes are disabled until it succeeds.
+          <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: status.refresh, loading: status.refreshing }}>
+            {t('The latest USB status read failed. Mode changes are disabled until it succeeds.')}
           </InlineStatus>
         )}
 
         {current && (
           <>
             <div>
-              <Row label="Active mode" value={current.active_mode ? usbModeLabel(current.active_mode) : <Unavailable />} mono />
-              <Row label="Scheduled mode" value={scheduled ? `${usbModeLabel(scheduled)} (not yet verified)` : 'None'} mono />
-              <Row label="Boot default" value={bootDefault ? usbModeLabel(bootDefault) : <Unavailable />} mono />
+              <Row label={t('Active mode')} value={current.active_mode ? usbModeLabel(current.active_mode) : <Unavailable />} mono />
+              <Row label={t('Scheduled mode')} value={scheduled ? t('{mode} (not yet verified)', { mode: usbModeLabel(scheduled) }) : t('None')} mono />
+              <Row label={t('Boot default')} value={bootDefault ? usbModeLabel(bootDefault) : <Unavailable />} mono />
             </div>
-            {current.ncm_last_error && <p className="text-meta text-danger">Last NCM attempt: {current.ncm_last_error}</p>}
+            {current.ncm_last_error && <p className="text-meta text-danger">{t('Last NCM attempt: {error}', { error: current.ncm_last_error })}</p>}
 
             <div className="space-y-2 border-t border-line/8 pt-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Segmented<UsbModeKey | ''>
-                  label="USB mode"
+                  label={t('USB mode')}
                   options={availability.map((a) => ({ value: a.mode, label: a.label, disabled: !a.supported }))}
                   value={selected}
                   onChange={(m) => m && setDraft(m)}
                   disabled={controlsLocked || !ready}
                 />
                 <Button variant="primary" onClick={applySwitch} loading={busy === 'switch'} disabled={!ready || controlsLocked || !plan.ok}>
-                  Apply mode
+                  {t('Apply mode')}
                 </Button>
               </div>
               {selectedInfo && (
                 <p className="text-meta text-ink2">
                   {selectedInfo.experimental && (
                     <>
-                      <Chip tone="warn">Experimental</Chip>{' '}
+                      <Chip tone="warn">{t('Experimental')}</Chip>{' '}
                     </>
                   )}
                   {USB_MODE_INFO[selectedInfo.mode].description}
@@ -270,7 +273,7 @@ function UsbSection() {
                 </p>
               ))}
               <p className="text-meta text-ink3">
-                Changing the mode re-enumerates USB. You will be asked to confirm before anything is sent.
+                {t('Changing the mode re-enumerates USB. You will be asked to confirm before anything is sent.')}
               </p>
             </div>
           </>
@@ -282,14 +285,14 @@ function UsbSection() {
               kind={note.kind}
               action={
                 attempt.verdict.state === 'error' || attempt.verdict.state === 'timeout'
-                  ? { label: 'Check again', onClick: checkAgain }
+                  ? { label: t('Check again'), onClick: checkAgain }
                   : undefined
               }
             >
               {note.text}
             </InlineStatus>
             {attempt.pending.rollback && attempt.verdict.state !== 'verified' && (
-              <p className="text-meta text-ink3">Agent note: {attempt.pending.rollback}</p>
+              <p className="text-meta text-ink3">{t('Agent note: {note}', { note: attempt.pending.rollback })}</p>
             )}
           </div>
         )}
@@ -297,30 +300,30 @@ function UsbSection() {
         {current && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/8 pt-3">
             <div className="min-w-0">
-              <p className="text-body font-semibold text-ink">NCM after boot</p>
-              <p className="text-meta text-ink2">Applies NCM after the stock USB stack settles. This is the boot default, not the active mode.</p>
+              <p className="text-body font-semibold text-ink">{t('NCM after boot')}</p>
+              <p className="text-meta text-ink2">{t('Applies NCM after the stock USB stack settles. This is the boot default, not the active mode.')}</p>
             </div>
             <Toggle
               checked={bootDefault === 'ncm'}
               disabled={!ready || controlsLocked || (bootDefault !== 'ncm' && !ncm?.supported)}
               onChange={setNcmDefault}
-              label="NCM after boot"
+              label={t('NCM after boot')}
             />
           </div>
         )}
 
         {charger.status === 'error' && (
-          <InlineStatus kind="stale" action={{ label: 'Retry', onClick: charger.refresh, loading: charger.refreshing }}>
-            Powerbank state could not be read.
+          <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: charger.refresh, loading: charger.refreshing }}>
+            {t('Powerbank state could not be read.')}
           </InlineStatus>
         )}
         {powerbank !== null && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/8 pt-3">
             <div className="min-w-0">
-              <p className="text-body font-semibold text-ink">Powerbank / OTG</p>
-              <p className="text-meta text-ink2">Drive the USB-C port as a power output.</p>
+              <p className="text-body font-semibold text-ink">{t('Powerbank / OTG')}</p>
+              <p className="text-meta text-ink2">{t('Drive the USB-C port as a power output.')}</p>
             </div>
-            <Toggle checked={powerbank} disabled={busy !== null} onChange={togglePowerbank} label="Powerbank" />
+            <Toggle checked={powerbank} disabled={busy !== null} onChange={togglePowerbank} label={t('Powerbank')} />
           </div>
         )}
       </div>
@@ -344,22 +347,22 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
     setBusy('restart')
     try {
       await api.restartAgent()
-      toast('Agent restarting — reloading in a few seconds')
+      toast(t('Agent restarting — reloading in a few seconds'))
       setTimeout(() => window.location.reload(), 5000)
     } catch (e) {
-      toastError(e, 'Failed to restart agent')
+      toastError(e, t('Failed to restart agent'))
       setBusy(null)
     }
   }
 
   async function runPowerAction(action: 'reboot' | 'shutdown') {
     const ok = await confirm({
-      title: action === 'reboot' ? 'Reboot the device?' : 'Shut down the device?',
+      title: action === 'reboot' ? t('Reboot the device?') : t('Shut down the device?'),
       body:
         action === 'reboot'
-          ? 'All connections will drop for about 10-30 seconds.'
-          : 'The device powers off. Use the physical power button to turn it back on.',
-      confirmLabel: action === 'reboot' ? 'Reboot' : 'Shut down',
+          ? t('All connections will drop for about 10-30 seconds.')
+          : t('The device powers off. Use the physical power button to turn it back on.'),
+      confirmLabel: action === 'reboot' ? t('Reboot') : t('Shut down'),
       kind: 'danger',
     })
     if (!ok) return
@@ -367,13 +370,13 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
     try {
       if (action === 'reboot') {
         await api.reboot()
-        toast('Reboot command sent')
+        toast(t('Reboot command sent'))
       } else {
         await api.shutdown()
-        toast('Shutdown command sent')
+        toast(t('Shutdown command sent'))
       }
     } catch (e) {
-      toastError(e, `Failed to ${action} device`)
+      toastError(e, action === 'reboot' ? t('Failed to reboot device') : t('Failed to shutdown device'))
     } finally {
       setBusy(null)
     }
@@ -382,21 +385,21 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card title="Device">
-          <ReadNote res={deviceRes} what="Device information" />
-          <Row label="Model" value={device?.model ?? <Unavailable />} mono />
-          <Row label="Firmware" value={device?.firmware ?? <Unavailable />} mono />
-          {device?.hardware && <Row label="Hardware" value={device.hardware} mono />}
-          <Row label="Kernel" value={device?.kernel ?? <Unavailable />} mono />
-          <Row label="Uptime" value={device ? formatUptime(device.uptime_secs) : <Unavailable />} />
-          <Row label="Load" value={device?.load_avg?.map((v) => v.toFixed(2)).join(', ') ?? <Unavailable />} mono />
+        <Card title={t('Device')}>
+          <ReadNote res={deviceRes} what={t('Device information')} />
+          <Row label={t('Model')} value={device?.model ?? <Unavailable />} mono />
+          <Row label={t('Firmware')} value={device?.firmware ?? <Unavailable />} mono />
+          {device?.hardware && <Row label={t('Hardware')} value={device.hardware} mono />}
+          <Row label={t('Kernel')} value={device?.kernel ?? <Unavailable />} mono />
+          <Row label={t('Uptime')} value={device ? formatUptime(device.uptime_secs) : <Unavailable />} />
+          <Row label={t('Load average')} value={device?.load_avg?.map((v) => v.toFixed(2)).join(', ') ?? <Unavailable />} mono />
           <Row label="IMEI" value={imei || <Unavailable />} mono />
-          {imeiRes.status === 'error' && <p className="mt-1 text-meta text-ink3">IMEI could not be read.</p>}
+          {imeiRes.status === 'error' && <p className="mt-1 text-meta text-ink3">{t('IMEI could not be read.')}</p>}
         </Card>
 
-        <Card title="SIM card">
-          <ReadNote res={simRes} what="SIM information" />
-          <Row label="Status" value={sim?.state ?? <Unavailable />} />
+        <Card title={t('SIM card')}>
+          <ReadNote res={simRes} what={t('SIM information')} />
+          <Row label={t('Status')} value={sim?.state ?? <Unavailable />} />
           <Row label="ICCID" value={sim?.iccid ?? <Unavailable />} mono />
           <Row label="IMSI" value={sim?.imsi ?? <Unavailable />} mono />
           <Row label="MCC/MNC" value={sim?.mcc && sim?.mnc ? `${sim.mcc}/${sim.mnc}` : <Unavailable />} mono />
@@ -405,52 +408,64 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
 
       <UsbSection />
 
-      <Card title="Service controls">
+      <Card title={t('Service controls')}>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={restartAgent} loading={busy === 'restart'}>
-            <IRefresh size={14} /> Restart agent
+            <IRefresh size={14} /> {t('Restart agent')}
           </Button>
           <Button
             variant="outline"
             onClick={() => window.location.reload()}
           >
-            <IRestart size={14} /> Reload dashboard
+            <IRestart size={14} /> {t('Reload dashboard')}
           </Button>
           <Button variant="danger" onClick={() => runPowerAction('reboot')} loading={busy === 'reboot'}>
-            <IRestart size={14} /> Reboot
+            <IRestart size={14} /> {t('Reboot')}
           </Button>
           <Button variant="danger" onClick={() => runPowerAction('shutdown')} loading={busy === 'shutdown'}>
-            <IPower size={14} /> Shut down
+            <IPower size={14} /> {t('Shut down')}
           </Button>
         </div>
         <p className="mt-2.5 text-meta text-ink3">
-          Restart agent briefly interrupts the backend. Reboot and shut down interrupt all connections.
+          {t('Restart agent briefly interrupts the backend. Reboot and shut down interrupt all connections.')}
         </p>
       </Card>
 
-      <Card title="Appearance">
+      <Card title={t('Appearance')}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-body text-ink2" aria-hidden="true">Theme</span>
+          <span className="text-body text-ink2" aria-hidden="true">{t('Theme')}</span>
           <Segmented<ThemePref>
-            label="Theme"
+            label={t('Theme')}
             options={[
-              { value: 'auto', label: 'Auto' },
-              { value: 'light', label: 'Light' },
-              { value: 'dark', label: 'Dark' },
+              { value: 'auto', label: t('Auto') },
+              { value: 'light', label: t('Light') },
+              { value: 'dark', label: t('Dark') },
             ]}
             value={themePref}
             onChange={setThemePref}
           />
         </div>
-        <p className="mt-2 text-meta text-ink3">Auto follows this device's light or dark setting.</p>
+        <p className="mt-2 text-meta text-ink3">{t("Auto follows this device's light or dark setting.")}</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line/8 pt-3">
+          <span className="text-body text-ink2" aria-hidden="true">{t('Language')}</span>
+          <Segmented<Lang>
+            label={t('Language')}
+            options={[
+              { value: 'zh', label: '中文' },
+              { value: 'en', label: 'English' },
+            ]}
+            value={lang()}
+            onChange={setLang}
+          />
+        </div>
       </Card>
 
-      <Card title="Connection">
+      <Card title={t('Connection')}>
         <Row label="API" value={API_BASE} mono />
-        <Row label="Dashboard" value={window.location.origin} mono />
+        <Row label={t('Dashboard')} value={window.location.origin} mono />
         <div className="mt-3 border-t border-line/8 pt-3">
           <Button variant="ghost" onClick={onLogout}>
-            <ILogout size={14} /> Sign out
+            <ILogout size={14} /> {t('Sign out')}
           </Button>
         </div>
       </Card>

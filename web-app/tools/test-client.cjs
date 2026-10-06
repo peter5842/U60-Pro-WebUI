@@ -4,9 +4,13 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+// These fixtures evaluate one module in isolation; i18n resolves to English.
+const i18nStub = {
+  t: (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text),
+}
 function fixture() {
   const requests = []
-  const context = { exports: {}, AbortController, setTimeout, clearTimeout,
+  const context = { exports: {}, require: () => i18nStub, AbortController, setTimeout, clearTimeout,
     window: { location: { hostname: '192.168.0.1' }, dispatchEvent: () => {} },
     sessionStorage: { getItem: () => 'general-session-secret', setItem: () => {}, removeItem: () => {} },
     fetch: async (url, options) => {

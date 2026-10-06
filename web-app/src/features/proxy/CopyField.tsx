@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Button, Field, Input } from '../../ui/controls'
 import { toast } from '../../ui/feedback'
+import { t } from '../../i18n'
 
 /**
  * Read-only value with a Copy button. The dashboard is served over plain HTTP,
@@ -14,7 +15,7 @@ export default function CopyField({ label, value, hint }: { label: string; value
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(value)
-        toast(`${label} copied`)
+        toast(t('{label} copied', { label }))
         return
       }
     } catch {
@@ -25,7 +26,7 @@ export default function CopyField({ label, value, hint }: { label: string; value
     el.focus()
     el.select()
     const copied = document.execCommand?.('copy')
-    toast(copied ? `${label} copied` : 'Selected — press Ctrl/⌘+C to copy', copied ? 'ok' : 'err')
+    toast(copied ? t('{label} copied', { label }) : t('Selected — press Ctrl/⌘+C to copy'), copied ? 'ok' : 'err')
   }
 
   return (
@@ -41,7 +42,7 @@ export default function CopyField({ label, value, hint }: { label: string; value
             aria-describedby={ids.describedBy}
           />
           <Button variant="outline" onClick={() => void copy()}>
-            Copy
+            {t('Copy')}
           </Button>
         </div>
       )}

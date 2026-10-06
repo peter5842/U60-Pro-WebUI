@@ -7,6 +7,7 @@
 // fields are ignored.
 
 import { get, post, put, readCsv, req } from './client'
+import { t } from '../i18n'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
 import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
@@ -840,12 +841,18 @@ function bandList(v: unknown): number[] {
 }
 
 /** Modem capabilities. Missing lists mean "no support claimed", never a guessed default. */
+// Agent labels that are words rather than radio identifiers (agent/src/cell.rs NETWORK_MODES).
+const NETWORK_MODE_LABELS: Record<string, string> = {
+  Only_LTE: t('4G only'),
+  Only_WCDMA: t('3G only'),
+}
+
 export function mapModemCapabilities(d: Record<string, unknown>): ModemCapabilities {
   const network_modes: ModemCapabilities['network_modes'] = []
   for (const m of arr(d.network_modes) ?? []) {
     if (!isObj(m)) continue
     const value = nonEmptyStr(m.value)
-    if (value !== undefined) network_modes.push({ value, label: nonEmptyStr(m.label) ?? value })
+    if (value !== undefined) network_modes.push({ value, label: NETWORK_MODE_LABELS[value] ?? nonEmptyStr(m.label) ?? value })
   }
   return {
     network_modes,

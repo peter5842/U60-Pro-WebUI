@@ -1,5 +1,6 @@
 import type { Dispatch } from 'react'
 import { api } from '../../../data/api'
+import { t } from '../../../i18n'
 import type { ModemCapabilities } from '../../../types'
 import { Button, Segmented } from '../../../ui/controls'
 import { confirm, toast, toastError } from '../../../ui/feedback'
@@ -44,32 +45,32 @@ export function NetworkMode({
       try {
         await api.networkModeSet(snapshot)
         dispatch({ type: 'applied', snapshot })
-        toast('Network mode request accepted — the modem is reconnecting')
+        toast(t('Network mode request accepted — the modem is reconnecting'))
         onApplied()
       } catch (e) {
         dispatch({ type: 'failed' })
-        toastError(e, 'Failed to set network mode')
+        toastError(e, t('Failed to set network mode'))
       }
     })
   }
 
   return (
-    <Card title="Network mode">
+    <Card title={t('Network mode')}>
       <p className="mb-3 text-meta text-ink2">
-        Preferred network technology. The modem reconnects after a change.
+        {t('Preferred network technology. The modem reconnects after a change.')}
       </p>
       <p className="mb-2 text-meta text-ink2">
-        Current mode: <span className="font-semibold text-ink">{currentLabel ?? 'Unknown (not reported)'}</span>
+        {t('Current mode:')} <span className="font-semibold text-ink">{currentLabel ?? t('Unknown (not reported)')}</span>
       </p>
       {modes.length === 0 ? (
         <InlineStatus kind="warn" live={false}>
-          The firmware did not report any selectable network modes.
+          {t('The firmware did not report any selectable network modes.')}
         </InlineStatus>
       ) : (
         <>
           <Segmented
             wrap
-            label="Network mode"
+            label={t('Network mode')}
             options={modes.map((m) => ({ value: m.value, label: m.label }))}
             value={state.draft}
             onChange={(v) => dispatch({ type: 'edit', update: () => v })}
@@ -77,25 +78,29 @@ export function NetworkMode({
           />
           {state.verifying && (
             <InlineStatus kind="info" className="mt-3">
-              Request accepted — waiting for the modem to report the new mode.
+              {t('Request accepted — waiting for the modem to report the new mode.')}
             </InlineStatus>
           )}
           {state.mismatch && (
             <InlineStatus kind="warn" className="mt-3">
-              The modem reports {currentLabel ?? 'no network mode'} rather than the mode you applied.
+              {currentLabel !== undefined
+                ? t('The modem reports {mode} rather than the mode you applied.', { mode: currentLabel })
+                : t('The modem reports no network mode rather than the mode you applied.')}
             </InlineStatus>
           )}
           {conflict && (
-            <InlineStatus kind="warn" className="mt-3" action={{ label: 'Use modem value', onClick: () => dispatch({ type: 'cancel' }) }}>
-              The modem now reports {currentLabel ?? 'a different mode'}. Your selection is kept.
+            <InlineStatus kind="warn" className="mt-3" action={{ label: t('Use modem value'), onClick: () => dispatch({ type: 'cancel' }) }}>
+              {currentLabel !== undefined
+                ? t('The modem now reports {mode}. Your selection is kept.', { mode: currentLabel })
+                : t('The modem now reports a different mode. Your selection is kept.')}
             </InlineStatus>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={apply} loading={state.pending !== null} disabled={!dirty || state.draft === '' || locked}>
-              Apply
+              {t('Apply')}
             </Button>
             <Button variant="ghost" onClick={() => dispatch({ type: 'cancel' })} disabled={!dirty || locked}>
-              Cancel
+              {t('Cancel')}
             </Button>
           </div>
         </>

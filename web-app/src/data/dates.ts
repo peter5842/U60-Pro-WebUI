@@ -7,6 +7,7 @@
 // (local) time, NOT instants: never route them through `Date`, which would
 // reinterpret them as UTC and shift the day in other browser timezones.
 
+import { t } from '../i18n'
 import type { CalendarDate } from '../types'
 
 export type { CalendarDate }
@@ -14,7 +15,21 @@ export type { CalendarDate }
 const MIN_YEAR = 1970
 const MAX_YEAR = 2199
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// One whole-date string per month, so each language orders day, month and year its own way.
+const MONTH_FORMATS: ((v: { day: number; year: number }) => string)[] = [
+  (v) => t('{day} Jan {year}', v),
+  (v) => t('{day} Feb {year}', v),
+  (v) => t('{day} Mar {year}', v),
+  (v) => t('{day} Apr {year}', v),
+  (v) => t('{day} May {year}', v),
+  (v) => t('{day} Jun {year}', v),
+  (v) => t('{day} Jul {year}', v),
+  (v) => t('{day} Aug {year}', v),
+  (v) => t('{day} Sep {year}', v),
+  (v) => t('{day} Oct {year}', v),
+  (v) => t('{day} Nov {year}', v),
+  (v) => t('{day} Dec {year}', v),
+]
 
 export function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
@@ -55,10 +70,10 @@ export function parseDeviceDate(value: unknown): CalendarDate | null {
   return isValidCalendarDate(year, month, day) ? { year, month, day } : null
 }
 
-/** "16 Oct 2026". Locale-independent so every viewer sees the same date. */
+/** "16 Oct 2026" (Chinese: "2026 年 10 月 16 日"). Follows the dashboard language, not the browser locale. */
 export function formatCalendarDate(date: CalendarDate | null | undefined): string {
   if (!date || !isValidCalendarDate(date.year, date.month, date.day)) return '—'
-  return `${date.day} ${MONTHS[date.month - 1]} ${date.year}`
+  return MONTH_FORMATS[date.month - 1]({ day: date.day, year: date.year })
 }
 
 /** Negative / zero / positive like a comparator. */

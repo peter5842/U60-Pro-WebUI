@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { api } from '../../data/api'
 import { useResource, type PollResult } from '../../data/poll'
+import { t } from '../../i18n'
 import type { ApnModeState, ApnProfile } from '../../types'
 import { Button, Field, Input, Segmented, Select } from '../../ui/controls'
 import { confirm, toastError } from '../../ui/feedback'
@@ -18,7 +19,7 @@ import {
 } from './apnState'
 
 const PDP_LABELS: Record<number, string> = { 1: 'IPv4', 2: 'IPv6', 3: 'IPv4v6' }
-const AUTH_LABELS: Record<number, string> = { 0: 'None', 1: 'PAP', 2: 'CHAP', 3: 'PAP/CHAP' }
+const AUTH_LABELS: Record<number, string> = { 0: t('None'), 1: 'PAP', 2: 'CHAP', 3: 'PAP/CHAP' }
 
 const EMPTY_FORM = { name: '', apn: '', user: '', pass: '', auth: 0, pdp: 3 }
 
@@ -96,43 +97,49 @@ function ApnMode({ apn }: { apn: ApnOwner }) {
       try {
         await api.apnModeSet({ apn_mode: modeWire(target) })
       } catch (e) {
-        toastError(e, 'Failed to change APN mode')
+        toastError(e, t('Failed to change APN mode'))
         return
       }
       // Accepted by the router: show it now, then verify with a read-back.
       mode.mutate(modeState(target))
       setDraft(null)
       const verified = await apn.readBack()
-      if (verified) apn.setNotice(`APN mode is now ${target === 'auto' ? 'automatic' : 'manual'}. Mobile data may reconnect briefly.`)
+      if (verified) {
+        apn.setNotice(
+          target === 'auto'
+            ? t('APN mode is now automatic. Mobile data may reconnect briefly.')
+            : t('APN mode is now manual. Mobile data may reconnect briefly.'),
+        )
+      }
     })
   }
 
   return (
-    <Card title="APN mode">
+    <Card title={t('APN mode')}>
       <p className="mb-3 text-meta text-ink2">
-        Automatic selects the APN from your SIM. Switch to manual to use a custom profile.
+        {t('Automatic selects the APN from your SIM. Switch to manual to use a custom profile.')}
       </p>
       {mode.status === 'error' && (
         <InlineStatus
           kind="error"
           className="mb-3"
-          action={{ label: 'Retry', onClick: mode.refresh, loading: mode.refreshing }}
+          action={{ label: t('Retry'), onClick: mode.refresh, loading: mode.refreshing }}
         >
-          APN mode could not be read{mode.error ? `: ${mode.error}` : '.'}
+          {mode.error ? t('APN mode could not be read: {error}', { error: mode.error }) : t('APN mode could not be read.')}
         </InlineStatus>
       )}
       {mode.status === 'stale' && (
         <InlineStatus
           kind="stale"
           className="mb-3"
-          action={{ label: 'Retry', onClick: mode.refresh, loading: mode.refreshing }}
+          action={{ label: t('Retry'), onClick: mode.refresh, loading: mode.refreshing }}
         >
-          Showing the last APN mode read. The latest refresh failed.
+          {t('Showing the last APN mode read. The latest refresh failed.')}
         </InlineStatus>
       )}
       {mode.status === 'ready' && observed === 'unknown' && (
         <InlineStatus kind="warn" className="mb-3" live={false}>
-          The router reported an APN mode this dashboard does not recognise. Choose a mode and apply it to set it.
+          {t('The router reported an APN mode this dashboard does not recognise. Choose a mode and apply it to set it.')}
         </InlineStatus>
       )}
       {mode.status === 'loading' ? (
@@ -140,12 +147,12 @@ function ApnMode({ apn }: { apn: ApnOwner }) {
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <Segmented<ObservedApnMode>
-            label="APN mode"
+            label={t('APN mode')}
             value={shown}
             disabled={locked}
             options={[
-              { value: 'auto', label: 'Automatic' },
-              { value: 'manual', label: 'Manual' },
+              { value: 'auto', label: t('Automatic') },
+              { value: 'manual', label: t('Manual') },
             ]}
             onChange={(v) => {
               // Selection only edits the draft. Arrow keys must never reach the router.
@@ -158,11 +165,11 @@ function ApnMode({ apn }: { apn: ApnOwner }) {
             loading={op === 'mode'}
             disabled={locked || !canApplyMode(draft, observed)}
           >
-            Apply
+            {t('Apply')}
           </Button>
           {draft && (
             <Button variant="ghost" disabled={locked} onClick={() => setDraft(null)}>
-              Cancel
+              {t('Cancel')}
             </Button>
           )}
         </div>
@@ -188,7 +195,7 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
       try {
         await api.apnActivate({ profileId: target.profileId })
       } catch (e) {
-        toastError(e, 'Failed to activate APN profile')
+        toastError(e, t('Failed to activate APN profile'))
         // The agent rolls the mode back on failure; show whatever the router now reports.
         await apn.readBack(false)
         return
@@ -196,20 +203,20 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
       // The agent sets manual mode before enabling the profile, so the accepted state is manual.
       mode.mutate(modeState('manual'))
       const verified = await apn.readBack()
-      if (verified) apn.setNotice(`Activated "${target.profilename}". Mobile data may reconnect briefly.`)
+      if (verified) apn.setNotice(t('Activated "{name}". Mobile data may reconnect briefly.', { name: target.profilename }))
     })
   }
 
   async function deleteProfile(p: ApnProfile) {
     if (locked) return
     const target = { profileId: p.profileId, profilename: p.profilename }
-    const ok = await confirm({ title: `Delete APN profile "${target.profilename}"?`, confirmLabel: 'Delete', danger: true })
+    const ok = await confirm({ title: t('Delete APN profile "{name}"?', { name: target.profilename }), confirmLabel: t('Delete'), danger: true })
     if (!ok) return
     await apn.run('delete', async () => {
       try {
         await api.apnDelete({ profileId: target.profileId })
       } catch (e) {
-        toastError(e, 'Failed to delete APN profile')
+        toastError(e, t('Failed to delete APN profile'))
         return
       }
       await apn.readBack()
@@ -230,7 +237,7 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
               <span className="truncate">{p.profilename}</span>
               {p.isEnable && (
                 <Chip tone={observed === 'manual' ? 'ok' : 'default'}>
-                  {observed === 'manual' ? 'Active' : 'Selected'}
+                  {observed === 'manual' ? t('Active') : t('Selected')}
                 </Chip>
               )}
             </p>
@@ -241,8 +248,8 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
           </div>
           <div className="flex shrink-0 gap-1.5">
             {!p.isEnable && (
-              <Button size="sm" variant="primary" disabled={locked} onClick={() => activateProfile(p)} aria-label={`Activate ${p.profilename}`}>
-                Activate
+              <Button size="sm" variant="primary" disabled={locked} onClick={() => activateProfile(p)} aria-label={t('Activate {name}', { name: p.profilename })}>
+                {t('Activate')}
               </Button>
             )}
             <Button
@@ -250,10 +257,10 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
               variant="ghost"
               disabled={p.isEnable || locked}
               onClick={() => deleteProfile(p)}
-              aria-label={`Delete ${p.profilename}`}
-              title={p.isEnable ? 'Switch to another APN before deleting this profile' : undefined}
+              aria-label={t('Delete {name}', { name: p.profilename })}
+              title={p.isEnable ? t('Switch to another APN before deleting this profile') : undefined}
             >
-              Delete
+              {t('Delete')}
             </Button>
           </div>
         </div>
@@ -284,7 +291,7 @@ function AddProfile({ apn }: { apn: ApnOwner }) {
         })
       } catch (e) {
         // Keep the open form and every field so the user can correct and retry.
-        toastError(e, 'Failed to add profile')
+        toastError(e, t('Failed to add profile'))
         return
       }
       setAdding(false)
@@ -296,34 +303,34 @@ function AddProfile({ apn }: { apn: ApnOwner }) {
   if (!adding) {
     return (
       <Button variant="primary" onClick={() => setAdding(true)} disabled={locked}>
-        Add APN profile
+        {t('Add APN profile')}
       </Button>
     )
   }
   return (
-    <Card title="Add APN profile">
+    <Card title={t('Add APN profile')}>
       <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
-        <Field label="Profile name">
-          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="My Carrier" />
+        <Field label={t('Profile name')}>
+          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('My Carrier')} />
         </Field>
         <Field label="APN">
           <Input value={form.apn} onChange={(e) => setForm((f) => ({ ...f, apn: e.target.value }))} placeholder="internet" />
         </Field>
-        <Field label="Username">
-          <Input value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder="(optional)" />
+        <Field label={t('Username')}>
+          <Input value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder={t('(optional)')} />
         </Field>
-        <Field label="Password">
-          <Input type="password" autoComplete="new-password" value={form.pass} onChange={(e) => setForm((f) => ({ ...f, pass: e.target.value }))} placeholder="(optional)" />
+        <Field label={t('Password')}>
+          <Input type="password" autoComplete="new-password" value={form.pass} onChange={(e) => setForm((f) => ({ ...f, pass: e.target.value }))} placeholder={t('(optional)')} />
         </Field>
-        <Field label="Authentication">
+        <Field label={t('Authentication')}>
           <Select value={form.auth} onChange={(e) => setForm((f) => ({ ...f, auth: parseInt(e.target.value) }))}>
-            <option value={0}>None</option>
+            <option value={0}>{t('None')}</option>
             <option value={1}>PAP</option>
             <option value={2}>CHAP</option>
             <option value={3}>PAP/CHAP</option>
           </Select>
         </Field>
-        <Field label="PDP type">
+        <Field label={t('PDP type')}>
           <Select value={form.pdp} onChange={(e) => setForm((f) => ({ ...f, pdp: parseInt(e.target.value) }))}>
             <option value={3}>IPv4v6</option>
             <option value={1}>IPv4</option>
@@ -333,7 +340,7 @@ function AddProfile({ apn }: { apn: ApnOwner }) {
       </div>
       <div className="mt-3 flex gap-2">
         <Button variant="primary" onClick={addProfile} loading={op === 'add'} disabled={locked || !form.name || !form.apn}>
-          Add profile
+          {t('Add profile')}
         </Button>
         <Button
           variant="ghost"
@@ -344,7 +351,7 @@ function AddProfile({ apn }: { apn: ApnOwner }) {
             setForm(EMPTY_FORM)
           }}
         >
-          Cancel
+          {t('Cancel')}
         </Button>
       </div>
     </Card>
@@ -355,28 +362,28 @@ function Profiles({ apn }: { apn: ApnOwner }) {
   const profiles: PollResult<ApnProfile[]> = apn.profiles
   return (
     <>
-      <Card title="APN profiles">
+      <Card title={t('APN profiles')}>
         {profiles.status === 'loading' ? (
           <Skeleton className="h-20" />
         ) : profiles.status === 'error' || !profiles.data ? (
           <InlineStatus
             kind="error"
-            action={{ label: 'Retry', onClick: profiles.refresh, loading: profiles.refreshing }}
+            action={{ label: t('Retry'), onClick: profiles.refresh, loading: profiles.refreshing }}
           >
-            APN profiles could not be read{profiles.error ? `: ${profiles.error}` : '.'}
+            {profiles.error ? t('APN profiles could not be read: {error}', { error: profiles.error }) : t('APN profiles could not be read.')}
           </InlineStatus>
         ) : (
           <div className="space-y-2">
             {profiles.status === 'stale' && (
               <InlineStatus
                 kind="stale"
-                action={{ label: 'Retry', onClick: profiles.refresh, loading: profiles.refreshing }}
+                action={{ label: t('Retry'), onClick: profiles.refresh, loading: profiles.refreshing }}
               >
-                Showing the last profiles read. The latest refresh failed.
+                {t('Showing the last profiles read. The latest refresh failed.')}
               </InlineStatus>
             )}
             {profiles.data.length === 0 ? (
-              <Empty title="No manual APN profiles" body="Add the exact settings supplied by your carrier." />
+              <Empty title={t('No manual APN profiles')} body={t('Add the exact settings supplied by your carrier.')} />
             ) : (
               <ProfileList apn={apn} profiles={profiles.data} />
             )}
@@ -396,9 +403,9 @@ export default function ApnTab() {
       {apn.unverified && (
         <InlineStatus
           kind="warn"
-          action={{ label: 'Re-read APN state', onClick: () => void apn.readBack(), loading: apn.readingBack }}
+          action={{ label: t('Re-read APN state'), onClick: () => void apn.readBack(), loading: apn.readingBack }}
         >
-          The router accepted the change, but the current APN state could not be confirmed. What is shown may be out of date.
+          {t('The router accepted the change, but the current APN state could not be confirmed. What is shown may be out of date.')}
         </InlineStatus>
       )}
       {apn.notice && !apn.unverified && <InlineStatus kind="ok">{apn.notice}</InlineStatus>}

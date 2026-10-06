@@ -5,6 +5,7 @@
 // estimated from the browser clock.
 
 import { isValidCalendarDate, formatCalendarDate } from '../../data/dates'
+import { t } from '../../i18n'
 import type { CalendarDate, DataUsage } from '../../types'
 
 export type ResetState = 'enabled' | 'disabled' | 'unknown'
@@ -40,12 +41,12 @@ export function cycleView(u: DataUsage): CycleView {
   const state = resetState(u)
   return {
     state,
-    stateLabel: state === 'enabled' ? 'Enabled' : state === 'disabled' ? 'Disabled' : 'Unknown',
+    stateLabel: state === 'enabled' ? t('Enabled') : state === 'disabled' ? t('Disabled') : t('Unknown'),
     headline:
       state === 'disabled'
-        ? 'Automatic reset disabled'
+        ? t('Automatic reset disabled')
         : state === 'unknown'
-          ? 'Automatic reset status unknown'
+          ? t('Automatic reset status unknown')
           : null,
     resetDay: u.reset_day != null ? String(u.reset_day) : null,
     cycleStart: dateText(u.cycle_start),
@@ -53,10 +54,10 @@ export function cycleView(u: DataUsage): CycleView {
     nextReset: state === 'enabled' ? dateText(u.next_reset) : null,
     note:
       state === 'enabled'
-        ? 'Counters are maintained by the router and reset automatically on the reset day.'
+        ? t('Counters are maintained by the router and reset automatically on the reset day.')
         : state === 'disabled'
-          ? 'Automatic reset is disabled, so no reset is scheduled.'
-          : 'The router did not report whether counters reset automatically.',
+          ? t('Automatic reset is disabled, so no reset is scheduled.')
+          : t('The router did not report whether counters reset automatically.'),
   }
 }
 
@@ -64,10 +65,10 @@ export type ResetDayParse = { ok: true; day: number } | { ok: false; error: stri
 
 /** Whole number 1–31 only: no blanks, fractions, signs or exponents. */
 export function parseResetDay(text: string): ResetDayParse {
-  const t = text.trim()
-  if (!/^\d{1,2}$/.test(t)) return { ok: false, error: 'Enter a whole number from 1 to 31.' }
-  const day = Number(t)
-  if (day < 1 || day > 31) return { ok: false, error: 'Enter a whole number from 1 to 31.' }
+  const trimmed = text.trim()
+  if (!/^\d{1,2}$/.test(trimmed)) return { ok: false, error: t('Enter a whole number from 1 to 31.') }
+  const day = Number(trimmed)
+  if (day < 1 || day > 31) return { ok: false, error: t('Enter a whole number from 1 to 31.') }
   return { ok: true, day }
 }
 
@@ -81,14 +82,14 @@ export interface ResetDayCopy {
 /** Saving a reset day also enables automatic reset on the agent; say so before it happens. */
 export function resetDayCopy(state: ResetState): ResetDayCopy {
   if (state === 'enabled') {
-    return { turnsOn: false, hint: 'Day of the month, 1 to 31.', button: 'Save' }
+    return { turnsOn: false, hint: t('Day of the month, 1 to 31.'), button: t('Save') }
   }
   return {
     turnsOn: true,
     hint:
       state === 'disabled'
-        ? 'Day of the month, 1 to 31. Saving also turns automatic reset on.'
-        : 'Day of the month, 1 to 31. Automatic reset status is unknown; saving also turns automatic reset on.',
-    button: 'Save and turn on automatic reset',
+        ? t('Day of the month, 1 to 31. Saving also turns automatic reset on.')
+        : t('Day of the month, 1 to 31. Automatic reset status is unknown; saving also turns automatic reset on.'),
+    button: t('Save and turn on automatic reset'),
   }
 }

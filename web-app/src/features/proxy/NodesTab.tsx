@@ -6,6 +6,7 @@ import { Button, Input, Segmented } from '../../ui/controls'
 import { toast, toastError } from '../../ui/feedback'
 import { Card, Chip, Empty, InlineStatus, Skeleton } from '../../ui/primitives'
 import { delayLabel, delayTone, type NodeSort, visibleNodes } from './proxyView'
+import { t } from '../../i18n'
 
 export default function NodesTab() {
   const groups = usePoll<ProxyGroups>('proxy-groups', api.proxyGroups, 15_000)
@@ -19,10 +20,10 @@ export default function NodesTab() {
     setSelecting(name)
     try {
       await api.proxySelect(name)
-      toast(name === 'AUTO' ? 'Using the fastest node automatically' : `Using ${name}`)
+      toast(name === 'AUTO' ? t('Using the fastest node automatically') : t('Using {name}', { name }))
       groups.refresh()
     } catch (e) {
-      toastError(e, 'Failed to switch node')
+      toastError(e, t('Failed to switch node'))
     } finally {
       setSelecting(null)
     }
@@ -33,10 +34,10 @@ export default function NodesTab() {
     try {
       const delays = await api.proxyDelay()
       const ok = Object.values(delays).filter((d) => d > 0).length
-      toast(`Latency tested: ${ok} node${ok === 1 ? '' : 's'} reachable`)
+      toast(t('Latency tested: {n} node(s) reachable', { n: ok }))
       setSort('delay')
     } catch (e) {
-      toastError(e, 'Latency test failed')
+      toastError(e, t('Latency test failed'))
     } finally {
       setTesting(false)
       groups.refresh()
@@ -48,14 +49,14 @@ export default function NodesTab() {
   if (!g) {
     return (
       <InlineStatus kind="error" action={{ label: 'Retry', onClick: groups.refresh, loading: groups.refreshing }}>
-        Nodes could not be read{groups.error ? `: ${groups.error}` : '.'}
+        {groups.error ? t('Nodes could not be read: {error}', { error: groups.error }) : t('Nodes could not be read.')}
       </InlineStatus>
     )
   }
   if (!g.running) {
     return (
       <InlineStatus kind="info" live={false}>
-        Start the proxy (Overview) to choose nodes.
+        {t('Start the proxy (Overview) to choose nodes.')}
       </InlineStatus>
     )
   }
@@ -68,14 +69,13 @@ export default function NodesTab() {
 
   return (
     <>
-      <Card title="Route">
+      <Card title={t('Route')}>
         <div className="space-y-3">
           <p className="text-body text-ink2">
-            Proxied traffic leaves through{' '}
+            {t('Proxied traffic leaves through')}{' '}
             <span className="font-semibold text-ink">
               {now === 'AUTO' && auto?.now ? `AUTO → ${auto.now}` : (now ?? '—')}
             </span>
-            .
           </p>
           <div className="flex flex-wrap gap-2">
             {auto && (
@@ -86,7 +86,7 @@ export default function NodesTab() {
                 disabled={!!selecting}
                 aria-pressed={now === 'AUTO'}
               >
-                Fastest (auto)
+                {t('Fastest (auto)')}
               </Button>
             )}
             <Button
@@ -96,22 +96,22 @@ export default function NodesTab() {
               disabled={!!selecting}
               aria-pressed={now === 'DIRECT'}
             >
-              Direct
+              {t('Direct')}
             </Button>
           </div>
         </div>
       </Card>
 
       <Card
-        title={`Nodes${g.nodes.length ? ` (${g.nodes.length})` : ''}`}
+        title={g.nodes.length ? t('Nodes ({n})', { n: g.nodes.length }) : t('Nodes')}
         action={
           <Button size="sm" variant="outline" onClick={() => void testAll()} loading={testing} disabled={!g.nodes.length}>
-            Test latency
+            {t('Test latency')}
           </Button>
         }
       >
         {g.nodes.length === 0 ? (
-          <Empty title="No nodes yet" body="Add a subscription, or update it if it was added while the proxy was stopped." />
+          <Empty title={t('No nodes yet')} body={t('Add a subscription, or update it if it was added while the proxy was stopped.')} />
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -119,22 +119,22 @@ export default function NodesTab() {
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Filter nodes (e.g. HK, Japan)"
-                  aria-label="Filter nodes"
+                  placeholder={t('Filter nodes (e.g. HK, Japan)')}
+                  aria-label={t('Filter nodes')}
                 />
               </div>
               <Segmented<NodeSort>
-                label="Sort nodes"
+                label={t('Sort nodes')}
                 options={[
-                  { value: 'name', label: 'Name' },
-                  { value: 'delay', label: 'Latency' },
+                  { value: 'name', label: t('Name') },
+                  { value: 'delay', label: t('Latency') },
                 ]}
                 value={sort}
                 onChange={setSort}
               />
             </div>
             {nodes.length === 0 ? (
-              <p className="py-4 text-center text-meta text-ink3">No node matches “{query}”.</p>
+              <p className="py-4 text-center text-meta text-ink3">{t('No node matches “{query}”.', { query })}</p>
             ) : (
               <ul className="max-h-[36rem] divide-y divide-line/6 overflow-y-auto">
                 {nodes.map((n) => {

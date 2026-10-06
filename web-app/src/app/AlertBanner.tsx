@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { IX } from '../icons'
 import { dismiss, endEpisodes, isDismissed, type Alert, type Dismissals } from './alerts'
 import { useAlertConditions } from './HomeContext'
+import { t } from '../i18n'
 
 const episodeKey = (a: Alert) => `${a.id}:${a.level}`
 
@@ -66,7 +67,7 @@ export function AlertBanner() {
               onClick={() => setDismissals(new Map())}
               className="whitespace-nowrap text-meta font-semibold text-ink3 hover:text-ink coarse:min-h-11"
             >
-              {hidden === 1 ? 'Show 1 dismissed alert' : `Show ${hidden} dismissed alerts`}
+              {hidden === 1 ? t('Show 1 dismissed alert') : t('Show {n} dismissed alerts', { n: hidden })}
             </button>
           )}
         </div>

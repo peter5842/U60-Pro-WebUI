@@ -4,9 +4,13 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+// These fixtures evaluate one module in isolation; i18n resolves to English.
+const i18nStub = {
+  t: (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text),
+}
 
 function load() {
-  const context = { exports: {}, require: () => ({}) }
+  const context = { exports: {}, require: (spec) => (spec.endsWith('i18n') ? i18nStub : {}) }
   const source = fs.readFileSync(path.join(__dirname, '../src/app/alerts.ts'), 'utf8')
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,

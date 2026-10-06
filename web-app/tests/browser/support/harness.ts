@@ -320,9 +320,11 @@ async function installRouting(context: BrowserContext, agent: AgentImpl, allowed
   })
 }
 
-export const test = base.extend<{ agent: MockAgent; authenticated: boolean }>({
+export const test = base.extend<{ agent: MockAgent; authenticated: boolean; lang: 'en' | 'zh' }>({
   /** Set `test.use({ authenticated: false })` to start at the login screen. */
   authenticated: [true, { option: true }],
+  /** UI language. Specs assert English text; `test.use({ lang: 'zh' })` checks the Chinese UI. */
+  lang: ['en', { option: true }],
 
   agent: [
     async ({ context, baseURL }, use, testInfo) => {
@@ -343,7 +345,15 @@ export const test = base.extend<{ agent: MockAgent; authenticated: boolean }>({
     { auto: true },
   ],
 
-  context: async ({ context, authenticated }, use) => {
+  context: async ({ context, authenticated, lang }, use) => {
+    // Unless the page itself switched language (Settings → Language), start in `lang`.
+    await context.addInitScript((initial) => {
+      try {
+        if (!localStorage.getItem('u60_lang')) localStorage.setItem('u60_lang', initial)
+      } catch {
+        /* storage unavailable */
+      }
+    }, lang)
     if (authenticated) {
       // Seed once per tab so a logout/401 test is not re-authenticated by a reload.
       await context.addInitScript((token) => {

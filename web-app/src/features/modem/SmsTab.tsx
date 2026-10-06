@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { api } from '../../data/api'
 import { useResource } from '../../data/poll'
+import { t } from '../../i18n'
 import type { SmsCapabilities, SmsMessage } from '../../types'
 import { IMessage, IPlus } from '../../icons'
 import { Button, Field, Input, Segmented } from '../../ui/controls'
@@ -74,13 +75,16 @@ export default function SmsTab() {
       if (latest.current) commit(markRead(latest.current.messages, id))
     } catch (e) {
       if (latest.current) commit(restoreUnread(latest.current.messages, id))
-      const why = e instanceof Error && e.message ? ` (${e.message})` : ''
-      setMarkFailed(`The router did not mark that message as read${why}. It is shown as unread again.`)
+      setMarkFailed(
+        e instanceof Error && e.message
+          ? t('The router did not mark that message as read ({error}). It is shown as unread again.', { error: e.message })
+          : t('The router did not mark that message as read. It is shown as unread again.'),
+      )
     }
   }
 
   async function deleteMsg(id: number) {
-    const ok = await confirm({ title: 'Delete this message?', confirmLabel: 'Delete', danger: true })
+    const ok = await confirm({ title: t('Delete this message?'), confirmLabel: t('Delete'), danger: true })
     if (!ok) return
     try {
       await api.smsDelete([id])
@@ -88,7 +92,7 @@ export default function SmsTab() {
       if (latest.current) commit(removeMessage(latest.current.messages, id))
       setSelectedId((cur) => (cur === id ? null : cur))
     } catch (e) {
-      toastError(e, 'Delete failed')
+      toastError(e, t('Delete failed'))
     }
   }
 
@@ -104,14 +108,14 @@ export default function SmsTab() {
     setSending(true)
     try {
       await api.smsSend(payload.to, payload.text)
-      toast('Message sent')
+      toast(t('Message sent'))
       setTo('')
       setText('')
       setComposing(false)
       // Sent messages live in the same collection; re-read it whichever box is showing.
       list.refresh()
     } catch (err) {
-      toastError(err, 'Failed to send')
+      toastError(err, t('Failed to send'))
     } finally {
       setSending(false)
     }
@@ -120,22 +124,22 @@ export default function SmsTab() {
   if (caps.status === 'loading') return <Skeleton className="h-64" />
   if (caps.status === 'error' || !caps.data) {
     return (
-      <InlineStatus kind="error" action={{ label: 'Retry', onClick: caps.refresh, loading: caps.refreshing }}>
-        SMS availability could not be checked{caps.error ? `: ${caps.error}` : '.'}
+      <InlineStatus kind="error" action={{ label: t('Retry'), onClick: caps.refresh, loading: caps.refreshing }}>
+        {caps.error ? t('SMS availability could not be checked: {error}', { error: caps.error }) : t('SMS availability could not be checked.')}
       </InlineStatus>
     )
   }
   if (!ready) {
     return (
-      <Card title="SMS unavailable">
+      <Card title={t('SMS unavailable')}>
         <Empty
           icon={<IMessage size={26} />}
-          title="Firmware WMS is not ready"
-          body={caps.data.reason ?? 'The agent could not verify the SMS service, so listing, sending, and deletion are disabled.'}
+          title={t('Firmware WMS is not ready')}
+          body={caps.data.reason ?? t('The agent could not verify the SMS service, so listing, sending, and deletion are disabled.')}
         />
         <div className="flex justify-center">
           <Button size="sm" variant="ghost" onClick={caps.refresh} loading={caps.refreshing}>
-            Check again
+            {t('Check again')}
           </Button>
         </div>
       </Card>
@@ -146,10 +150,10 @@ export default function SmsTab() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented<Box>
-          label="Message box"
+          label={t('Message box')}
           options={[
-            { value: 'inbox', label: unread > 0 ? `Inbox (${unread})` : 'Inbox' },
-            { value: 'sent', label: 'Sent' },
+            { value: 'inbox', label: unread > 0 ? t('Inbox ({n})', { n: unread }) : t('Inbox') },
+            { value: 'sent', label: t('Sent') },
           ]}
           value={box}
           onChange={(v) => {
@@ -158,8 +162,8 @@ export default function SmsTab() {
           }}
         />
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={list.refresh} loading={list.refreshing} aria-label="Refresh messages">
-            Refresh
+          <Button variant="ghost" onClick={list.refresh} loading={list.refreshing} aria-label={t('Refresh messages')}>
+            {t('Refresh')}
           </Button>
           <Button
             variant="primary"
@@ -168,49 +172,53 @@ export default function SmsTab() {
               setSelectedId(null)
             }}
           >
-            <IPlus size={14} /> New
+            <IPlus size={14} /> {t('New')}
           </Button>
         </div>
       </div>
 
       {list.status === 'stale' && (
-        <InlineStatus kind="stale" action={{ label: 'Retry', onClick: list.refresh, loading: list.refreshing }}>
-          Showing the last messages loaded. Refreshing failed{list.error ? `: ${list.error}` : '.'}
+        <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: list.refresh, loading: list.refreshing }}>
+          {list.error
+            ? t('Showing the last messages loaded. Refreshing failed: {error}', { error: list.error })
+            : t('Showing the last messages loaded. Refreshing failed.')}
         </InlineStatus>
       )}
       {markFailed && (
-        <InlineStatus kind="error" action={{ label: 'Dismiss', onClick: () => setMarkFailed(null) }}>
+        <InlineStatus kind="error" action={{ label: t('Dismiss'), onClick: () => setMarkFailed(null) }}>
           {markFailed}
         </InlineStatus>
       )}
       {list.data && list.data.dropped > 0 && (
         <InlineStatus kind="warn" live={false}>
-          {list.data.dropped} message{list.data.dropped === 1 ? '' : 's'} from the router could not be read and {list.data.dropped === 1 ? 'is' : 'are'} not shown.
+          {list.data.dropped === 1
+            ? t('{n} message from the router could not be read and is not shown.', { n: list.data.dropped })
+            : t('{n} messages from the router could not be read and are not shown.', { n: list.data.dropped })}
         </InlineStatus>
       )}
 
       {composing && (
-        <Card title="New message">
+        <Card title={t('New message')}>
           <form onSubmit={send} className="space-y-2.5">
-            <Field label="To">
+            <Field label={t('To')}>
               <Input value={to} onChange={(e) => setTo(e.target.value)} required placeholder="+61400000000" inputMode="tel" />
             </Field>
-            <Field label="Message">
+            <Field label={t('Message')}>
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 required
                 rows={4}
                 className="w-full resize-none rounded-ctl border border-line/12 bg-surface2/50 px-3 py-2 text-body text-ink outline-none transition-colors placeholder:text-ink3 focus:border-accent/60"
-                placeholder="Type a message…"
+                placeholder={t('Type a message…')}
               />
             </Field>
             <div className="flex items-center gap-2">
               <Button type="submit" variant="primary" loading={sending} disabled={!to || !text}>
-                Send
+                {t('Send')}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setComposing(false)}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <span className="tnum font-mono ml-auto text-caption text-ink3">{text.length}/160</span>
             </div>
@@ -219,7 +227,7 @@ export default function SmsTab() {
       )}
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <Card className="lg:col-span-1" title={box === 'inbox' ? 'Inbox' : 'Sent'} pad={false}>
+        <Card className="lg:col-span-1" title={box === 'inbox' ? t('Inbox') : t('Sent')} pad={false}>
           {list.status === 'loading' ? (
             <div className="space-y-2 p-4">
               <Skeleton className="h-14" />
@@ -228,12 +236,12 @@ export default function SmsTab() {
             </div>
           ) : list.status === 'error' || !all ? (
             <div className="p-4">
-              <InlineStatus kind="error" action={{ label: 'Retry', onClick: list.refresh, loading: list.refreshing }}>
-                Messages could not be loaded{list.error ? `: ${list.error}` : '.'}
+              <InlineStatus kind="error" action={{ label: t('Retry'), onClick: list.refresh, loading: list.refreshing }}>
+                {list.error ? t('Messages could not be loaded: {error}', { error: list.error }) : t('Messages could not be loaded.')}
               </InlineStatus>
             </div>
           ) : messages.length === 0 ? (
-            <Empty icon={<IMessage size={26} />} title="No messages" />
+            <Empty icon={<IMessage size={26} />} title={t('No messages')} />
           ) : (
             <ul className="max-h-[32rem] divide-y divide-line/6 overflow-y-auto">
               {messages.map((m) => (
@@ -252,7 +260,7 @@ export default function SmsTab() {
                       {m.tag === 1 && (
                         <>
                           <span aria-hidden="true" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent" />
-                          <span className="sr-only">Unread</span>
+                          <span className="sr-only">{t('Unread')}</span>
                         </>
                       )}
                     </div>
@@ -265,18 +273,20 @@ export default function SmsTab() {
           )}
         </Card>
 
-        <Card className="lg:col-span-2" title={selected ? 'Message' : 'Select a message'}>
+        <Card className="lg:col-span-2" title={selected ? t('Message') : t('Select a message')}>
           {selected ? (
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-body font-semibold text-ink">
-                    {box === 'inbox' ? 'From' : 'To'}: {selected.number || '\u2014'}
+                    {box === 'inbox'
+                      ? t('From: {number}', { number: selected.number || '\u2014' })
+                      : t('To: {number}', { number: selected.number || '\u2014' })}
                   </p>
                   <p className="tnum font-mono mt-0.5 text-caption text-ink3">{formatDate(selected.date)}</p>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => deleteMsg(selected.id)}>
-                  Delete
+                  {t('Delete')}
                 </Button>
               </div>
               <div className="rounded-ctl bg-surface2/70 p-3.5">
@@ -291,12 +301,12 @@ export default function SmsTab() {
                     setSelectedId(null)
                   }}
                 >
-                  Reply
+                  {t('Reply')}
                 </Button>
               )}
             </div>
           ) : (
-            <Empty icon={<IMessage size={26} />} title="No message selected" />
+            <Empty icon={<IMessage size={26} />} title={t('No message selected')} />
           )}
         </Card>
       </div>

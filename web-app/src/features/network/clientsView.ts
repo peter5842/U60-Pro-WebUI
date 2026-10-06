@@ -1,5 +1,6 @@
 // Pure presentation helpers for the Clients tab (PLAN2 R07, U07).
 
+import { t } from '../../i18n'
 import type { Client } from '../../types'
 
 export interface GroupedClients {
@@ -53,13 +54,13 @@ export function clientFields(group: 'wifi' | 'usb' | 'ethernet' | 'other', c: Cl
   const fields: ClientField[] = [{ label: 'IP', value: c.ip, mono: true }]
   if (group === 'wifi') {
     fields.push(
-      { label: 'Signal', value: c.signal_dbm != null ? `${c.signal_dbm} dBm` : undefined, mono: true },
-      { label: 'Link', value: formatWifiLink(c), mono: true },
+      { label: t('Signal'), value: c.signal_dbm != null ? `${c.signal_dbm} dBm` : undefined, mono: true },
+      { label: t('Link'), value: formatWifiLink(c), mono: true },
     )
   } else if (group === 'usb') {
-    fields.push({ label: 'Interface', value: c.interface, mono: true })
+    fields.push({ label: t('Interface'), value: c.interface, mono: true })
   } else if (group === 'ethernet') {
-    fields.push({ label: 'Speed', value: formatLinkMbps(c.wired_link_mbps), mono: true })
+    fields.push({ label: t('Speed'), value: formatLinkMbps(c.wired_link_mbps), mono: true })
   }
   fields.push({ label: 'MAC', value: c.mac, mono: true })
   return fields

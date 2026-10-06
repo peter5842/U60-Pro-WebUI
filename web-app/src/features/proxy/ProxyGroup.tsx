@@ -7,6 +7,7 @@ import NodesTab from './NodesTab'
 import OverviewTab from './OverviewTab'
 import SettingsTab from './SettingsTab'
 import SubscriptionsTab from './SubscriptionsTab'
+import { t } from '../../i18n'
 
 type Tab = 'overview' | 'subscriptions' | 'nodes' | 'settings'
 
@@ -18,20 +19,20 @@ export default function ProxyGroup() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">Proxy</h1>
-        <p className="lg:mt-0.5 text-body text-ink2">mihomo subscriptions, nodes and LAN routing</p>
+        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">{t('Proxy')}</h1>
+        <p className="lg:mt-0.5 text-body text-ink2">{t('mihomo subscriptions, nodes and LAN routing')}</p>
       </div>
 
       <Tabs
         tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'subscriptions', label: 'Subscriptions' },
-          { id: 'nodes', label: 'Nodes' },
-          { id: 'settings', label: 'Settings' },
+          { id: 'overview', label: t('Overview') },
+          { id: 'subscriptions', label: t('Subscriptions') },
+          { id: 'nodes', label: t('Nodes') },
+          { id: 'settings', label: t('Settings') },
         ]}
         active={tab}
         onChange={setTab}
-        label="Proxy sections"
+        label={t('Proxy sections')}
         idBase="proxy"
       />
 

@@ -6,6 +6,7 @@
 //   scheduled mode   what an accepted PUT /api/usb/mode asked for but status has not confirmed yet
 //   boot default     what the agent re-applies after boot (status.default_mode)
 
+import { t } from '../../i18n'
 import type { UsbMode, UsbModeResult, UsbStatus } from '../../types'
 
 /** The only modes the dashboard can ever request. `debug` is deliberately absent: the agent rejects it. */
@@ -16,16 +17,17 @@ export const USB_MODE_KEYS: readonly UsbModeKey[] = ['rndis', 'ecm', 'ncm']
 export const USB_MODE_INFO: Record<UsbModeKey, { label: string; description: string }> = {
   rndis: {
     label: 'RNDIS',
-    description: "Microsoft's USB networking. Native on Windows; needs unmaintained drivers on macOS.",
+    description: t("Microsoft's USB networking. Native on Windows; needs unmaintained drivers on macOS."),
   },
   ecm: {
     label: 'ECM',
-    description: 'CDC-ECM USB Ethernet. Driver-free on macOS, Linux and modern Windows. Best supported mode.',
+    description: t('CDC-ECM USB Ethernet. Driver-free on macOS, Linux and modern Windows. Best supported mode.'),
   },
   ncm: {
     label: 'NCM',
-    description:
+    description: t(
       'CDC-NCM USB Ethernet. Higher throughput in theory. Experimental: ZTE does not wire ncm.0 into the normal USB switch.',
+    ),
   },
 }
 
@@ -34,7 +36,7 @@ export function isUsbModeKey(v: unknown): v is UsbModeKey {
 }
 
 export function usbModeLabel(mode: UsbModeKey | null | undefined): string {
-  return mode ? USB_MODE_INFO[mode].label : 'unknown'
+  return mode ? USB_MODE_INFO[mode].label : t('unknown')
 }
 
 // ── Capabilities ──────────────────────────────────────────────────────────────
@@ -63,7 +65,7 @@ export function usbModeAvailability(status: UsbStatus | null): ModeAvailability[
     const info = USB_MODE_INFO[mode]
     const base = { mode, label: info.label, description: info.description }
     if (!status) {
-      return { ...base, supported: false, experimental: mode === 'ncm', source: 'none' as const, reason: 'USB status is unavailable.' }
+      return { ...base, supported: false, experimental: mode === 'ncm', source: 'none' as const, reason: t('USB status is unavailable.') }
     }
     if (caps) {
       const cap = caps.find((c) => c.mode === mode)
@@ -73,7 +75,7 @@ export function usbModeAvailability(status: UsbStatus | null): ModeAvailability[
           supported: false,
           experimental: mode === 'ncm',
           source: 'capabilities' as const,
-          reason: `${info.label} is not offered by this firmware (the agent does not list it).`,
+          reason: t('{mode} is not offered by this firmware (the agent does not list it).', { mode: info.label }),
         }
       }
       return {
@@ -81,7 +83,7 @@ export function usbModeAvailability(status: UsbStatus | null): ModeAvailability[
         supported: cap.supported,
         experimental: cap.experimental,
         source: 'capabilities' as const,
-        ...(cap.supported ? {} : { reason: `${info.label} is not available on this firmware (the agent reports it unsupported).` }),
+        ...(cap.supported ? {} : { reason: t('{mode} is not available on this firmware (the agent reports it unsupported).', { mode: info.label }) }),
       }
     }
     const supported = status.supported_modes.includes(mode)
@@ -90,7 +92,7 @@ export function usbModeAvailability(status: UsbStatus | null): ModeAvailability[
       supported,
       experimental: status.experimental_modes?.includes(mode) ?? mode === 'ncm',
       source: 'supported_modes' as const,
-      ...(supported ? {} : { reason: `${info.label} is not in the agent's supported modes.` }),
+      ...(supported ? {} : { reason: t("{mode} is not in the agent's supported modes.", { mode: info.label }) }),
     }
   })
 }
@@ -134,32 +136,37 @@ export type SwitchPlan =
  * request for `debug` (or any unknown string) can never be built.
  */
 export function planUsbSwitch(status: UsbStatus | null, target: unknown): SwitchPlan {
-  if (!status) return { ok: false, reason: 'USB status is unavailable.' }
-  if (!isUsbModeKey(target)) return { ok: false, reason: 'That USB mode is not available.' }
+  if (!status) return { ok: false, reason: t('USB status is unavailable.') }
+  if (!isUsbModeKey(target)) return { ok: false, reason: t('That USB mode is not available.') }
   const availability = usbModeAvailability(status).find((a) => a.mode === target)
-  if (!availability?.supported) return { ok: false, reason: availability?.reason ?? 'That USB mode is not available.' }
-  if (status.active_mode === target) return { ok: false, reason: `${usbModeLabel(target)} is already the active mode.` }
+  if (!availability?.supported) return { ok: false, reason: availability?.reason ?? t('That USB mode is not available.') }
+  if (status.active_mode === target) return { ok: false, reason: t('{mode} is already the active mode.', { mode: usbModeLabel(target) }) }
 
   const from = status.active_mode
   const rollbackFromNcm = target === 'ecm' && from === 'ncm'
   const label = usbModeLabel(target)
   const details = [
-    { label: 'Operation', value: rollbackFromNcm ? 'Roll back to ECM' : 'Switch USB mode' },
-    { label: 'Active now', value: usbModeLabel(from) },
-    { label: 'Requested', value: availability.experimental ? `${label} (experimental)` : label },
+    { label: t('Operation'), value: rollbackFromNcm ? t('Roll back to ECM') : t('Switch USB mode') },
+    { label: t('Active now'), value: usbModeLabel(from) },
+    { label: t('Requested'), value: availability.experimental ? t('{mode} (experimental)', { mode: label }) : label },
   ]
-  const consequence =
-    'The USB link disconnects and re-enumerates. A computer connected by USB loses its network link until the new mode is up, and may need a different driver. If you reach this dashboard over USB, you will lose it for that time. Devices on Wi-Fi are not expected to be affected.'
+  const consequence = t(
+    'The USB link disconnects and re-enumerates. A computer connected by USB loses its network link until the new mode is up, and may need a different driver. If you reach this dashboard over USB, you will lose it for that time. Devices on Wi-Fi are not expected to be affected.',
+  )
 
   let recovery: string
   if (target === 'ncm') {
-    recovery =
-      'Keep a Wi-Fi path to the dashboard open. This is an experimental mode: if USB does not come back, reconnect over Wi-Fi and switch back to ECM.'
+    recovery = t(
+      'Keep a Wi-Fi path to the dashboard open. This is an experimental mode: if USB does not come back, reconnect over Wi-Fi and switch back to ECM.',
+    )
   } else if (rollbackFromNcm) {
-    recovery =
-      'The agent switches the gadget back to ECM with its own preflight and rollback. Reconnect the USB cable or interface if the link does not return.'
+    recovery = t(
+      'The agent switches the gadget back to ECM with its own preflight and rollback. Reconnect the USB cable or interface if the link does not return.',
+    )
   } else {
-    recovery = `Reconnect USB after the switch. If the link does not return, use the dashboard over Wi-Fi and choose ${usbModeLabel(from)} again.`
+    recovery = t('Reconnect USB after the switch. If the link does not return, use the dashboard over Wi-Fi and choose {mode} again.', {
+      mode: usbModeLabel(from),
+    })
   }
 
   return {
@@ -168,13 +175,13 @@ export function planUsbSwitch(status: UsbStatus | null, target: unknown): Switch
     ...(target === 'ncm' ? { options: { confirm_experimental: true as const } } : {}),
     rollbackFromNcm,
     confirm: {
-      title: rollbackFromNcm ? 'Roll back to ECM?' : `Switch USB to ${label}?`,
+      title: rollbackFromNcm ? t('Roll back to ECM?') : t('Switch USB to {mode}?', { mode: label }),
       body: rollbackFromNcm
-        ? 'The device is in experimental NCM. This returns it to the standard ECM tethering mode.'
+        ? t('The device is in experimental NCM. This returns it to the standard ECM tethering mode.')
         : availability.experimental
-          ? `${label} is experimental and not part of the stock USB switch.`
-          : `This changes the USB tethering mode from ${usbModeLabel(from)} to ${label}.`,
-      confirmLabel: rollbackFromNcm ? 'Roll back' : 'Switch',
+          ? t('{mode} is experimental and not part of the stock USB switch.', { mode: label })
+          : t('This changes the USB tethering mode from {from} to {to}.', { from: usbModeLabel(from), to: label }),
+      confirmLabel: rollbackFromNcm ? t('Roll back') : t('Switch'),
       kind: 'connection',
       details,
       consequence,
@@ -199,7 +206,7 @@ export type UsbProbe =
 
 /** Agent errors carry an HTTP status; a transport failure does not. */
 export function classifyUsbReadError(e: unknown): Exclude<UsbProbe, { kind: 'status' }> {
-  const message = e instanceof Error && e.message ? e.message : 'Status check failed'
+  const message = e instanceof Error && e.message ? e.message : t('Status check failed')
   const status = (e as { status?: unknown } | null)?.status
   return typeof status === 'number' ? { kind: 'error', message } : { kind: 'unreachable', message }
 }
@@ -288,33 +295,50 @@ export function describeVerdict(pending: PendingSwitch, verdict: SwitchVerdict, 
   const secs = Math.round(USB_VERIFY_TIMEOUT_MS / 1000)
   switch (verdict.state) {
     case 'verified':
-      return { kind: 'ok', text: `Verified: the active USB mode is now ${target}.` }
+      return { kind: 'ok', text: t('Verified: the active USB mode is now {target}.', { target }) }
     case 'reconnecting':
       return {
         kind: 'warn',
-        text: `Reconnect, verifying. The dashboard cannot reach the device right now, which is expected while USB re-enumerates. Still checking whether ${target} is active. The request will not be sent again.`,
+        text: t(
+          'Reconnect, verifying. The dashboard cannot reach the device right now, which is expected while USB re-enumerates. Still checking whether {target} is active. The request will not be sent again.',
+          { target },
+        ),
       }
     case 'error':
       return {
         kind: 'error',
-        text: `Not verified: the status check failed (${verdict.message}). The switch to ${target} was not repeated.`,
+        text: t('Not verified: the status check failed ({message}). The switch to {target} was not repeated.', { message: verdict.message, target }),
       }
     case 'timeout':
       return {
         kind: 'warn',
         text: verdict.unreachable
-          ? `Not verified: the device did not answer within ${secs} s, so it is unknown whether ${target} took effect. The request was not repeated.`
-          : `Not verified: after ${secs} s the active mode still reads ${usbModeLabel(verdict.lastActive ?? activeNow)}, not ${target}. The request was not repeated.`,
+          ? t('Not verified: the device did not answer within {secs} s, so it is unknown whether {target} took effect. The request was not repeated.', { secs, target })
+          : t('Not verified: after {secs} s the active mode still reads {current}, not {target}. The request was not repeated.', {
+              secs,
+              current: usbModeLabel(verdict.lastActive ?? activeNow),
+              target,
+            }),
       }
     case 'waiting':
       return {
         kind: 'info',
         text:
           pending.via === 'scheduled'
-            ? `${target} scheduled. The active mode is still ${usbModeLabel(activeNow)} until the switch happens. Checking every ${USB_RECHECK_MS / 1000} s.`
+            ? t('{target} scheduled. The active mode is still {active} until the switch happens. Checking every {every} s.', {
+                target,
+                active: usbModeLabel(activeNow),
+                every: USB_RECHECK_MS / 1000,
+              })
             : pending.via === 'accepted'
-              ? `${target} requested and accepted by the firmware. Checking whether it becomes the active mode (every ${USB_RECHECK_MS / 1000} s).`
-              : `No reply to the ${target} request arrived, so it is not known whether it was accepted. Checking whether ${target} becomes active. The request will not be sent again.`,
+              ? t('{target} requested and accepted by the firmware. Checking whether it becomes the active mode (every {every} s).', {
+                  target,
+                  every: USB_RECHECK_MS / 1000,
+                })
+              : t(
+                  'No reply to the {target} request arrived, so it is not known whether it was accepted. Checking whether {target} becomes active. The request will not be sent again.',
+                  { target },
+                ),
       }
   }
 }

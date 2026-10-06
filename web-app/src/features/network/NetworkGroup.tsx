@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { t } from '../../i18n'
 import { TabPanel, Tabs } from '../../ui/Tabs'
 import ClientsTab from './ClientsTab'
 import WifiTab from './WifiTab'
@@ -12,19 +13,19 @@ export default function NetworkGroup() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">Network</h1>
-        <p className="lg:mt-0.5 text-body text-ink2">Connected clients, Wi-Fi and router settings</p>
+        <h1 className="hidden font-display text-2xl font-semibold tracking-[-0.015em] text-ink lg:block">{t('Network')}</h1>
+        <p className="lg:mt-0.5 text-body text-ink2">{t('Connected clients, Wi-Fi and router settings')}</p>
       </div>
 
       <Tabs
         tabs={[
-          { id: 'clients', label: 'Clients' },
+          { id: 'clients', label: t('Clients') },
           { id: 'wifi', label: 'Wi-Fi' },
-          { id: 'router', label: 'Router' },
+          { id: 'router', label: t('Router') },
         ]}
         active={tab}
         onChange={setTab}
-        label="Network sections"
+        label={t('Network sections')}
         idBase="network"
       />
 

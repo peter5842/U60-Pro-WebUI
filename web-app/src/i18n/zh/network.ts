@@ -1,0 +1,229 @@
+// Chinese UI strings: network. Keys are the English source text passed to t().
+export const network: Record<string, string> = {
+  // ── Network group ──
+  Network: '网络',
+  'Connected clients, Wi-Fi and router settings': '已连接终端、Wi-Fi 和路由器设置',
+  Clients: '终端',
+  Router: '路由器',
+  'Network sections': '网络分区',
+
+  // ── Shared words ──
+  Retry: '重试',
+  Refresh: '刷新',
+  Edit: '编辑',
+  Cancel: '取消',
+  Save: '保存',
+  Enabled: '已启用',
+  Disabled: '已停用',
+  Off: '关',
+  Unknown: '未知',
+  unknown: '未知',
+  Auto: '自动',
+  Yes: '是',
+  No: '否',
+  Password: '密码',
+  Channel: '信道',
+  Bandwidth: '带宽',
+  Band: '频段',
+  Security: '安全类型',
+  Hostname: '主机名',
+  Signal: '信号',
+  Operation: '操作',
+  'Hidden SSID': '隐藏 SSID',
+
+  // ── Clients tab ──
+  'No hostname': '无主机名',
+  'Could not read the connected clients: {error}': '无法读取已连接终端：{error}',
+  'Loading clients': '正在加载终端',
+  'Connected clients ({n})': '已连接终端（{n}）',
+  'Showing the last client list that loaded. The latest refresh failed: {error}': '显示的是上次读取的终端列表，最近一次刷新失败：{error}',
+  'No clients connected': '没有已连接的终端',
+  Ethernet: '以太网',
+  Other: '其他',
+  'Wi-Fi ({n})': 'Wi-Fi（{n}）',
+  'USB-C ({n})': 'USB-C（{n}）',
+  'Ethernet ({n})': '以太网（{n}）',
+  'Other ({n})': '其他（{n}）',
+  Radio: '射频',
+  Link: '链路',
+  Interface: '接口',
+  Speed: '速率',
+  'Showing the last USB link details that loaded. The latest refresh failed: {error}': '显示的是上次读取的 USB 链路信息，最近一次刷新失败：{error}',
+  'USB link details are unavailable: {error}': 'USB 链路信息不可用：{error}',
+  'Tether link': '共享连接',
+  '{label} capable · {rate} — cable/port limiting': '支持 {label} · {rate} — 受线缆或端口限制',
+  'Higher capable · {rate} — cable/port limiting': '支持更高速率 · {rate} — 受线缆或端口限制',
+  'Full speed': '全速',
+  'No USB-C clients connected': '没有已连接的 USB-C 终端',
+
+  // ── Router tab: DNS ──
+  'Could not read the DNS settings: {error}. Editing is disabled until the current settings load.': '无法读取 DNS 设置：{error}。在加载到当前设置之前无法编辑。',
+  'Showing the last DNS settings that loaded. The latest refresh failed: {error}': '显示的是上次读取的 DNS 设置，最近一次刷新失败：{error}',
+  'DNS settings saved': 'DNS 设置已保存',
+  'DNS settings were accepted, but reading them back failed. The values shown are what you submitted and are unverified.':
+    'DNS 设置已被接受，但回读失败。显示的是所提交的值，尚未验证。',
+  'Failed to save DNS': '保存 DNS 失败',
+  'Loading DNS settings': '正在加载 DNS 设置',
+  'DNS servers': 'DNS 服务器',
+  'Primary DNS (IPv4)': '首选 DNS（IPv4）',
+  'Secondary DNS (IPv4)': '备用 DNS（IPv4）',
+  'Primary DNS (IPv6)': '首选 DNS（IPv6）',
+  'Secondary DNS (IPv6)': '备用 DNS（IPv6）',
+  'Apply DNS': '应用 DNS',
+  'DNS presets': 'DNS 预设',
+  'Fill {name} DNS servers': '填入 {name} 的 DNS 服务器',
+
+  // ── Router tab: LAN ──
+  'Could not read the LAN settings: {error}. Editing is disabled until the current settings load.': '无法读取局域网设置：{error}。在加载到当前设置之前无法编辑。',
+  'Showing the last LAN settings that loaded. The latest refresh failed: {error}': '显示的是上次读取的局域网设置，最近一次刷新失败：{error}',
+  'Move the router to {ip}?': '将路由器地址改为 {ip}？',
+  'Apply LAN settings?': '应用局域网设置？',
+  'The router restarts its LAN and DHCP service to apply this.': '路由器将重启局域网和 DHCP 服务以应用此更改。',
+  'Router address': '路由器地址',
+  Netmask: '子网掩码',
+  'Every device on Wi-Fi and USB-C briefly loses its LAN connection, including this dashboard, which moves to the new address. Mobile data is not changed.':
+    '所有通过 Wi-Fi 和 USB-C 连接的设备都会短暂失去局域网连接，包括本控制台，它将转到新地址。移动数据不受影响。',
+  'Connected devices may briefly lose their LAN connection and renew their addresses. Mobile data is not changed.':
+    '已连接设备可能会短暂失去局域网连接并重新获取地址。移动数据不受影响。',
+  'If the new address cannot be confirmed within about two minutes, the previous LAN settings return automatically.':
+    '如果约两分钟内无法确认新地址，将自动恢复之前的局域网设置。',
+  'Invalid LAN transition response; previous settings will be restored automatically': '局域网切换响应无效；之前的设置将自动恢复',
+  'Reconnecting to {ip}. Rejoin Wi-Fi if needed. Previous settings return automatically if confirmation fails.':
+    '正在重新连接到 {ip}。如有需要，请重新加入 Wi-Fi。若确认失败，之前的设置将自动恢复。',
+  'Could not confirm the new address. Wait up to two minutes from Apply for the previous LAN settings to return, then reconnect.':
+    '无法确认新地址。请在点击“应用”后最多等待两分钟，待之前的局域网设置恢复后重新连接。',
+  'LAN settings confirmed. Opening the dashboard at its new address…': '局域网设置已确认，正在新地址打开控制台…',
+  'LAN settings saved and confirmed': '局域网设置已保存并确认',
+  'LAN settings were accepted, but reading them back failed. The values shown are what you submitted and are unverified.':
+    '局域网设置已被接受，但回读失败。显示的是所提交的值，尚未验证。',
+  'LAN change failed': '局域网更改失败',
+  'Failed to save LAN settings': '保存局域网设置失败',
+  'Loading LAN settings': '正在加载局域网设置',
+  'LAN / DHCP': '局域网 / DHCP',
+  'Changes must reconnect and confirm within two minutes; otherwise the previous settings are restored.':
+    '更改后必须在两分钟内重新连接并确认，否则将恢复之前的设置。',
+  'LAN IP': '局域网 IP',
+  'DHCP start': 'DHCP 起始地址',
+  'DHCP end': 'DHCP 结束地址',
+  'Lease time (hours)': '租约时间（小时）',
+  'The firmware stores this value in seconds.': '固件以秒为单位存储此值。',
+  'DHCP server': 'DHCP 服务器',
+  'Assign addresses to LAN and Wi-Fi clients': '为局域网和 Wi-Fi 终端分配地址',
+  'Apply LAN': '应用局域网设置',
+
+  // ── Wi-Fi tab: band cards ──
+  '{band} settings': '{band} 设置',
+  '{band} radio': '{band} 射频',
+  'Edit {band} settings': '编辑 {band} 设置',
+  'Cancel editing {band}': '取消编辑 {band}',
+  'Save {band} settings': '保存 {band} 设置',
+  'Master off': '总开关已关',
+  '{n} client': '{n} 个终端',
+  '{n} clients': '{n} 个终端',
+  'Global Wi-Fi is off. Band settings are still saved.': '全局 Wi-Fi 已关闭，频段设置仍会保存。',
+  'Unsaved changes': '有未保存的更改',
+  'Reload from device': '从设备重新加载',
+  "The device changed this band's settings while you were editing. Your edits are kept; reload to discard them.":
+    '编辑期间设备更改了此频段的设置。当前修改已保留，重新加载将丢弃这些修改。',
+  'Leave unchanged to keep the current password': '不修改则保留当前密码',
+  'TX power (%)': '发射功率（%）',
+  'Percent of maximum power, 1–100. Currently {value}%. Clear the box to keep the current value.':
+    '占最大功率的百分比，1–100。当前为 {value}%。清空输入框可保持当前值。',
+  'The current value is unknown. Leave blank to keep it, or enter 1–100.': '当前值未知。留空则保持不变，或输入 1–100。',
+  'Keep current': '保持当前值',
+  'Configured channel': '已配置信道',
+  'Current channel': '当前信道',
+  'Configured width': '已配置带宽',
+  'Current width': '当前带宽',
+  'Configured TX power': '已配置发射功率',
+  Hidden: '隐藏',
+  'Configuration notes': '配置说明',
+
+  // ── Wi-Fi tab: apply / verify notices ──
+  "{what}: applied. Wi-Fi may be reconnecting. Verifying the device's settings…": '{what}：已应用。Wi-Fi 可能正在重新连接，正在核对设备设置…',
+  "{what}: checking the device's settings…": '{what}：正在检查设备设置…',
+  '{what}: the device does not report the requested value yet ({fields}). Re-check in a moment.': '{what}：设备尚未报告所请求的值（{fields}），请稍后重新检查。',
+  '{what}: the device now reports the new settings.': '{what}：设备现已报告新的设置。',
+  '{what}: settings re-read from the device. A changed password cannot be read back to compare.': '{what}：已从设备重新读取设置。修改后的密码无法回读比对。',
+  "{what}: the change was sent but the device's settings could not be read back. They are unverified. Reconnect if Wi-Fi dropped, then check again.":
+    '{what}：更改已发送，但无法回读设备设置，结果尚未验证。如果 Wi-Fi 已断开，请重新连接后再次检查。',
+  "{what}: no reply from the device. Wi-Fi may have restarted and the change may or may not have applied. Reconnect, then check the device's settings.":
+    '{what}：设备无响应。Wi-Fi 可能已重启，更改不一定已生效。请重新连接后检查设备设置。',
+  '{what} failed': '{what}：操作失败',
+  'Could not read the Wi-Fi settings: {error}': '无法读取 Wi-Fi 设置：{error}',
+  'Loading Wi-Fi settings': '正在加载 Wi-Fi 设置',
+  'Global Wi-Fi': '全局 Wi-Fi',
+  'Cannot sync from {band}: {error}': '无法从 {band} 同步：{error}',
+  'Copy {source} to {target}': '将 {source} 复制到 {target}',
+  'Showing the last Wi-Fi settings that loaded. The latest refresh failed: {error}': '显示的是上次读取的 Wi-Fi 设置，最近一次刷新失败：{error}',
+  'Check device': '检查设备',
+
+  // ── Wi-Fi tab: global switch, band sync, guest ──
+  'Master switch': '总开关',
+  'This firmware does not expose a reliable global Wi-Fi toggle.': '此固件未提供可靠的全局 Wi-Fi 开关。',
+  'On — radios follow your per-band settings': '开 — 射频遵循各频段的设置',
+  'Off — all Wi-Fi radios are globally disabled': '关 — 所有 Wi-Fi 射频已被全局停用',
+  'Master Wi-Fi switch': 'Wi-Fi 总开关',
+  'Wi-Fi 6 enabled': 'Wi-Fi 6 已启用',
+  'Wi-Fi 6 disabled': 'Wi-Fi 6 已停用',
+  'Wi-Fi 7 / 802.11be supported': '支持 Wi-Fi 7 / 802.11be',
+  'Band sync': '频段同步',
+  'Copy SSID, password, security and hidden-state from one band to the other.': '将一个频段的 SSID、密码、安全类型和隐藏状态复制到另一个频段。',
+  'Use {band} for both': '两个频段均使用 {band}',
+  'Guest network': '访客网络',
+  'SSID:': 'SSID：',
+
+  // ── Wi-Fi configuration notes (wifiAdvice.ts) ──
+  'Automatic channel selection is currently using channel {channel}.': '自动信道选择当前使用信道 {channel}。',
+  'Configured channel is {configured}; the radio is currently on channel {current}.': '已配置的信道为 {configured}；射频当前位于信道 {current}。',
+  'Channel {channel} overlaps its neighbouring 2.4 GHz channels; 1, 6 and 11 are the non-overlapping set. No scan of nearby networks was run, so interference is neither measured nor ruled out.':
+    '信道 {channel} 与相邻的 2.4 GHz 信道重叠；1、6、11 是互不重叠的一组。未扫描附近网络，因此干扰既未被测量，也未被排除。',
+  'Channel {channel} is a DFS channel: radar detection can force the radio to change channel.': '信道 {channel} 是 DFS 信道：雷达检测可能迫使射频切换信道。',
+  'Configured width is {configured} MHz; the radio is currently operating at {current} MHz. The two can differ temporarily.':
+    '已配置的带宽为 {configured} MHz；射频当前工作在 {current} MHz。两者可能暂时不一致。',
+
+  // ── Wi-Fi confirmations (wifiConfirm.ts) ──
+  'Turn off all Wi-Fi?': '关闭所有 Wi-Fi？',
+  'Turn off Wi-Fi': '关闭 Wi-Fi',
+  'Turn Wi-Fi off': '关闭 Wi-Fi',
+  Radios: '射频',
+  '2.4 GHz and 5 GHz': '2.4 GHz 和 5 GHz',
+  'Every device connected over Wi-Fi, possibly this browser, will disconnect and this dashboard cannot be reached over Wi-Fi. Mobile data to the Internet is not changed.':
+    '所有通过 Wi-Fi 连接的设备（可能包括此浏览器）都将断开，且无法再通过 Wi-Fi 访问此控制台。通往互联网的移动数据不受影响。',
+  'Connect with USB-C or a cable, open this dashboard and turn Wi-Fi back on.': '通过 USB-C 或网线连接，打开此控制台并重新开启 Wi-Fi。',
+  'Turn off {band} Wi-Fi?': '关闭 {band} Wi-Fi？',
+  'Turn off {band}': '关闭 {band}',
+  'Disable radio': '停用射频',
+  'Devices connected on {band}, possibly this browser, will disconnect. Mobile data to the Internet is not changed.':
+    '连接在 {band} 上的设备（可能包括此浏览器）将断开。通往互联网的移动数据不受影响。',
+  'Reconnect to the {other} network or use USB-C, open this dashboard and turn {band} back on.':
+    '重新连接到 {other} 网络或使用 USB-C，打开此控制台并重新开启 {band}。',
+  'Apply {band} Wi-Fi changes?': '应用 {band} Wi-Fi 更改？',
+  'Apply changes': '应用更改',
+  'Wi-Fi restarts to apply this. Devices connected on {band}, possibly this browser, will disconnect and must rejoin under the new name. Mobile data to the Internet is not changed.':
+    'Wi-Fi 将重启以应用更改。连接在 {band} 上的设备（可能包括此浏览器）将断开，并须使用新名称重新加入。通往互联网的移动数据不受影响。',
+  'Wi-Fi restarts to apply this. Devices connected on {band}, possibly this browser, will disconnect. Mobile data to the Internet is not changed.':
+    'Wi-Fi 将重启以应用更改。连接在 {band} 上的设备（可能包括此浏览器）将断开。通往互联网的移动数据不受影响。',
+  'Reconnect to the new {band} network, or to {other} or USB-C, then reopen this dashboard. If a setting is wrong, change it back here.':
+    '重新连接到新的 {band} 网络，或连接到 {other} 或 USB-C，然后重新打开此控制台。如果某项设置有误，可在此处改回。',
+  'Reconnect to the {band} network, or to {other} or USB-C, then reopen this dashboard. If a setting is wrong, change it back here.':
+    '重新连接到 {band} 网络，或连接到 {other} 或 USB-C，然后重新打开此控制台。如果某项设置有误，可在此处改回。',
+  'Copy {source} settings to {target}?': '将 {source} 设置复制到 {target}？',
+  'Copy settings': '复制设置',
+  'Copied (not shown)': '已复制（不显示）',
+  'Not copied': '未复制',
+  'Wi-Fi restarts. Devices connected on {target}, possibly this browser, will disconnect and may need to rejoin. Mobile data to the Internet is not changed.':
+    'Wi-Fi 将重启。连接在 {target} 上的设备（可能包括此浏览器）将断开，可能需要重新加入。通往互联网的移动数据不受影响。',
+  'Reconnect to {source} or USB-C, then reopen this dashboard.': '重新连接到 {source} 或 USB-C，然后重新打开此控制台。',
+
+  // ── Wi-Fi draft validation and labels (wifiDraft.ts) ──
+  'Enter a whole number from 1 to 100.': '请输入 1 到 100 的整数。',
+  'The network name must be 1–32 bytes.': '网络名称必须为 1–32 字节。',
+  'The network name cannot contain quotes, ; $ ` \\ | < > & or control characters.': '网络名称不能包含引号，也不能包含 ; $ ` \\ | < > & 或控制字符。',
+  'The password cannot contain control characters.': '密码不能包含控制字符。',
+  'The password must be 8–63 characters.': '密码必须为 8–63 个字符。',
+  'source SSID is empty': '源 SSID 为空',
+  Width: '带宽',
+  'TX power': '发射功率',
+  'Changed (not shown)': '已更改（不显示）',
+}

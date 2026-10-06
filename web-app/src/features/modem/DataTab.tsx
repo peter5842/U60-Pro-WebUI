@@ -3,6 +3,7 @@ import { useHome } from '../../app/HomeContext'
 import { api } from '../../data/api'
 import { usageTotal } from '../../data/usage'
 import { formatBytes, formatCounterTime } from '../../format'
+import { t } from '../../i18n'
 import { IDownload, IUpload } from '../../icons'
 import type { UsagePeriod } from '../../types'
 import { Button, Field, Input } from '../../ui/controls'
@@ -24,15 +25,15 @@ function UsageTotals({ usage }: { usage: UsagePeriod }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       <div className="rounded-ctl bg-surface2/70 p-3">
-        <p className="label text-ok">Download</p>
+        <p className="label text-ok">{t('Download')}</p>
         <p className="tnum font-mono mt-1 text-xl font-medium text-ink"><Bytes value={usage.rx_bytes} /></p>
       </div>
       <div className="rounded-ctl bg-surface2/70 p-3">
-        <p className="label text-accent">Upload</p>
+        <p className="label text-accent">{t('Upload')}</p>
         <p className="tnum font-mono mt-1 text-xl font-medium text-ink"><Bytes value={usage.tx_bytes} /></p>
       </div>
       <div className="rounded-ctl bg-surface2/70 p-3">
-        <p className="label">Total</p>
+        <p className="label">{t('Total')}</p>
         <p className="tnum font-mono mt-1 text-xl font-medium text-ink"><Bytes value={total} /></p>
       </div>
     </div>
@@ -42,7 +43,7 @@ function UsageTotals({ usage }: { usage: UsagePeriod }) {
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-1">
-      <dt>{label}:</dt>
+      <dt>{t('{label}:', { label })}</dt>
       <dd className="font-bold text-ink">{children}</dd>
     </div>
   )
@@ -87,10 +88,10 @@ export default function DataTab() {
       home.mutate({ ...home.data, usage: next })
       home.refresh()
       setEditing(false)
-      if (copy.turnsOn) toast(`Reset day saved as day ${parsed.day}. Automatic reset is now on.`)
+      if (copy.turnsOn) toast(t('Reset day saved as day {day}. Automatic reset is now on.', { day: parsed.day }))
     } catch (e) {
       // Keep the editor and the draft so the user can retry.
-      toastError(e, 'Failed to set reset day')
+      toastError(e, t('Failed to set reset day'))
     } finally {
       setBusy(false)
     }
@@ -99,15 +100,15 @@ export default function DataTab() {
   if (!usage) {
     if (home.status === 'error') {
       return (
-        <InlineStatus kind="error" action={{ label: 'Retry', onClick: home.refresh, loading: home.refreshing }}>
-          Data usage could not be loaded{home.error ? `: ${home.error}` : '.'}
+        <InlineStatus kind="error" action={{ label: t('Retry'), onClick: home.refresh, loading: home.refreshing }}>
+          {home.error ? t('Data usage could not be loaded: {error}', { error: home.error }) : t('Data usage could not be loaded.')}
         </InlineStatus>
       )
     }
     if (home.data) {
       return (
-        <InlineStatus kind="warn" action={{ label: 'Retry', onClick: home.refresh, loading: home.refreshing }}>
-          The router did not report data usage.
+        <InlineStatus kind="warn" action={{ label: t('Retry'), onClick: home.refresh, loading: home.refreshing }}>
+          {t('The router did not report data usage.')}
         </InlineStatus>
       )
     }
@@ -124,23 +125,23 @@ export default function DataTab() {
   const copy = resetDayCopy(view.state)
   const sincePowerOn = usage.since_power_on
   const otherCounters = [
-    { label: 'Today', data: usage.day },
-    { label: 'Device lifetime', data: usage.total },
+    { label: t('Today'), data: usage.day },
+    { label: t('Device lifetime'), data: usage.total },
   ]
 
   return (
     <div className="space-y-3">
       {home.status === 'stale' && (
-        <InlineStatus kind="stale" action={{ label: 'Retry', onClick: home.refresh, loading: home.refreshing }}>
-          Showing the last usage the router reported. The latest refresh failed.
+        <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: home.refresh, loading: home.refreshing }}>
+          {t('Showing the last usage the router reported. The latest refresh failed.')}
         </InlineStatus>
       )}
 
       <Card
-        title="Current cycle"
+        title={t('Current cycle')}
         action={
           <Button size="sm" variant="ghost" onClick={openEditor} aria-expanded={editing}>
-            Set reset day
+            {t('Set reset day')}
           </Button>
         }
       >
@@ -154,7 +155,7 @@ export default function DataTab() {
             }}
           >
             <div className="w-full max-w-sm">
-              <Field label="Reset day" hint={copy.hint} error={fieldError}>
+              <Field label={t('Reset day')} hint={copy.hint} error={fieldError}>
                 {(ids) => (
                   <Input
                     id={ids.id}
@@ -176,7 +177,7 @@ export default function DataTab() {
                 {copy.button}
               </Button>
               <Button type="button" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
-                Cancel
+                {t('Cancel')}
               </Button>
             </div>
           </form>
@@ -186,30 +187,30 @@ export default function DataTab() {
           <div className="space-y-3">
             {view.headline && <p className="text-body font-semibold text-ink">{view.headline}</p>}
             <dl className="flex flex-wrap gap-x-4 gap-y-1 text-body text-ink2">
-              <Fact label="Automatic reset">{view.stateLabel}</Fact>
-              <Fact label="Reset day">{view.resetDay ?? <Unavailable />}</Fact>
-              <Fact label="Cycle start">{view.cycleStart ?? <Unavailable />}</Fact>
-              {view.showNextReset && <Fact label="Next reset">{view.nextReset ?? <Unavailable />}</Fact>}
+              <Fact label={t('Automatic reset')}>{view.stateLabel}</Fact>
+              <Fact label={t('Reset day')}>{view.resetDay ?? <Unavailable />}</Fact>
+              <Fact label={t('Cycle start')}>{view.cycleStart ?? <Unavailable />}</Fact>
+              {view.showNextReset && <Fact label={t('Next reset')}>{view.nextReset ?? <Unavailable />}</Fact>}
             </dl>
             <UsageTotals usage={cycle} />
             <p className="text-meta text-ink3">{view.note}</p>
           </div>
         ) : (
-          <p className="text-body text-ink3">No cycle data</p>
+          <p className="text-body text-ink3">{t('No cycle data')}</p>
         )}
       </Card>
 
       {sincePowerOn && (
-        <Card title="Connection counters">
+        <Card title={t('Connection counters')}>
           <UsageTotals usage={sincePowerOn} />
           <p className="mt-2 text-meta text-ink3">
-            Counter time: <CounterTime secs={sincePowerOn.time_secs} />. These counters restart when the mobile data
-            connection restarts.
+            {t('Counter time:')} <CounterTime secs={sincePowerOn.time_secs} />
           </p>
+          <p className="mt-0.5 text-meta text-ink3">{t('These counters restart when the mobile data connection restarts.')}</p>
         </Card>
       )}
 
-      <Card title="Other counters" pad={false}>
+      <Card title={t('Other counters')} pad={false}>
         {/* Mobile: stacked rows instead of a five-column table */}
         <ul className="divide-y divide-line/6 px-4 sm:hidden">
           {otherCounters.map(({ label, data: d }) => (
@@ -230,11 +231,11 @@ export default function DataTab() {
           <table className="w-full text-body">
             <thead>
               <tr className="label border-b border-line/8 text-left">
-                <th className="pb-1.5 pr-4 font-semibold">Period</th>
-                <th className="pb-1.5 pr-4 text-right font-semibold">Down</th>
-                <th className="pb-1.5 pr-4 text-right font-semibold">Up</th>
-                <th className="pb-1.5 pr-4 text-right font-semibold">Total</th>
-                <th className="pb-1.5 text-right font-semibold">Time</th>
+                <th className="pb-1.5 pr-4 font-semibold">{t('Period')}</th>
+                <th className="pb-1.5 pr-4 text-right font-semibold">{t('Down')}</th>
+                <th className="pb-1.5 pr-4 text-right font-semibold">{t('Up')}</th>
+                <th className="pb-1.5 pr-4 text-right font-semibold">{t('Total')}</th>
+                <th className="pb-1.5 text-right font-semibold">{t('Time')}</th>
               </tr>
             </thead>
             <tbody>

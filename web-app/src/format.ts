@@ -2,6 +2,7 @@
 
 import { LEVEL_LABEL, LEVEL_TONE, classifySignal, toneBgClass, toneTextClass } from './data/signalQuality'
 import type { SignalLevel } from './data/signalQuality'
+import { t } from './i18n'
 
 /** Unknown (null/undefined/non-finite/negative) renders as an em dash; a real 0 is "0 B". */
 export function formatBytes(bytes: number | null | undefined): string {
@@ -40,23 +41,23 @@ export function formatUptime(secs?: number | null): string {
   const d = Math.floor(secs / 86400)
   const h = Math.floor((secs % 86400) / 3600)
   const m = Math.floor((secs % 3600) / 60)
-  return [d && `${d}d`, (d || h) && `${h}h`, `${m}m`].filter(Boolean).join(' ')
+  return [d && t('{n}d', { n: d }), (d || h) && t('{n}h', { n: h }), t('{n}m', { n: m })].filter(Boolean).join(' ')
 }
 
 /** Usage-counter time: unknown is an em dash, a measured 0 is "0m". */
 export function formatCounterTime(secs?: number | null): string {
   if (secs == null || !Number.isFinite(secs) || secs < 0) return '\u2014'
-  return secs === 0 ? '0m' : formatUptime(secs)
+  return secs === 0 ? t('{n}m', { n: 0 }) : formatUptime(secs)
 }
 
 export function formatDuration(secs: number): string {
-  if (!Number.isFinite(secs) || secs <= 0) return '0s'
+  if (!Number.isFinite(secs) || secs <= 0) return t('{n}s', { n: 0 })
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   const s = Math.floor(secs % 60)
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
+  if (h > 0) return `${t('{n}h', { n: h })} ${t('{n}m', { n: m })}`
+  if (m > 0) return `${t('{n}m', { n: m })} ${t('{n}s', { n: s })}`
+  return t('{n}s', { n: s })
 }
 
 // ── Signal quality ────────────────────────────────────────────────────────────

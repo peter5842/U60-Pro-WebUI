@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useHome } from '../../app/HomeContext'
 import { api } from '../../data/api'
 import { useResource } from '../../data/poll'
+import { t } from '../../i18n'
 import type { BandLockState } from '../../types'
 import { Button } from '../../ui/controls'
 import { confirm, toast, toastError } from '../../ui/feedback'
@@ -17,7 +18,7 @@ import { useDraft } from './locking/useDraft'
 
 function describeLockState(state: BandLockState): string {
   if (state.kind === 'locked') return state.bands.join(', ')
-  return state.kind === 'automatic' ? '(automatic)' : '(unknown)'
+  return state.kind === 'automatic' ? t('(automatic)') : t('(unknown)')
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────
@@ -64,12 +65,12 @@ export default function Locking() {
         toast(successText)
         refresh()
       } catch (e) {
-        toastError(e, 'Cell lock failed')
+        toastError(e, t('Cell lock failed'))
       }
     })
   }
 
-  const lockServingCell = (cell: CellTuple) => lockCell(cell, `Locked to ${cell.tech === 'nr' ? 'NR' : 'LTE'} cell PCI ${cell.pci}`)
+  const lockServingCell = (cell: CellTuple) => lockCell(cell, t('Locked to {tech} cell PCI {pci}', { tech: cell.tech === 'nr' ? 'NR' : 'LTE', pci: cell.pci }))
 
   async function resetBands() {
     await run(async () => {
@@ -81,12 +82,12 @@ export default function Locking() {
         await api.bandLockReset()
         dispatchLte({ type: 'applied', snapshot: [] })
         dispatchNr({ type: 'applied', snapshot: [] })
-        toast('Band reset request accepted')
+        toast(t('Band reset request accepted'))
         refresh()
       } catch (e) {
         dispatchLte({ type: 'failed' })
         dispatchNr({ type: 'failed' })
-        toastError(e, 'Reset failed')
+        toastError(e, t('Reset failed'))
       }
     })
   }
@@ -97,17 +98,17 @@ export default function Locking() {
       if (!ok) return
       try {
         await api.cellLockReset()
-        toast('Cell lock reset request accepted')
+        toast(t('Cell lock reset request accepted'))
         refresh()
       } catch (e) {
-        toastError(e, 'Reset failed')
+        toastError(e, t('Reset failed'))
       }
     })
   }
 
   if (!signal) {
     return (
-      <Loading label="Loading radio state" className="space-y-3">
+      <Loading label={t('Loading radio state')} className="space-y-3">
         <Skeleton className="h-40" />
         <Skeleton className="h-56" />
       </Loading>
@@ -117,28 +118,30 @@ export default function Locking() {
   return (
     <div className="space-y-3">
       {homeStatus === 'stale' && (
-        <InlineStatus kind="stale" action={{ label: 'Retry', onClick: refresh }}>
-          Radio state could not be refreshed; showing the last values received.
+        <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: refresh }}>
+          {t('Radio state could not be refreshed; showing the last values received.')}
         </InlineStatus>
       )}
 
       {capabilities ? (
         <>
           {caps.status === 'stale' && (
-            <InlineStatus kind="stale" action={{ label: 'Retry', onClick: caps.refresh, loading: caps.refreshing }}>
-              Firmware capabilities could not be refreshed; using the last values received.
+            <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: caps.refresh, loading: caps.refreshing }}>
+              {t('Firmware capabilities could not be refreshed; using the last values received.')}
             </InlineStatus>
           )}
           <NetworkMode modes={capabilities.network_modes} state={mode} dispatch={dispatchMode} ops={ops} onApplied={refresh} />
         </>
       ) : caps.status === 'error' ? (
-        <Card title="Network mode and bands">
-          <InlineStatus kind="error" action={{ label: 'Retry', onClick: caps.refresh, loading: caps.refreshing }}>
-            Firmware capability data could not be read{caps.error ? ` (${caps.error})` : ''}. Radio mode and band changes are unavailable until it loads.
+        <Card title={t('Network mode and bands')}>
+          <InlineStatus kind="error" action={{ label: t('Retry'), onClick: caps.refresh, loading: caps.refreshing }}>
+            {t('Firmware capability data could not be read{detail}. Radio mode and band changes are unavailable until it loads.', {
+              detail: caps.error ? ` (${caps.error})` : '',
+            })}
           </InlineStatus>
         </Card>
       ) : (
-        <Loading label="Loading firmware capabilities">
+        <Loading label={t('Loading firmware capabilities')}>
           <Skeleton className="h-40" />
         </Loading>
       )}
@@ -148,8 +151,8 @@ export default function Locking() {
       {capabilities && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <BandLock
-            title="NR 5G band lock"
-            description="Allowed NR bands. Works in 5G SA mode only — firmware does not support NSA band locking."
+            title={t('NR 5G band lock')}
+            description={t('Allowed NR bands. Works in 5G SA mode only — firmware does not support NSA band locking.')}
             supported={capabilities.nr_sa_bands}
             type="nr"
             state={nr}
@@ -158,8 +161,8 @@ export default function Locking() {
             onApplied={refresh}
           />
           <BandLock
-            title="LTE band lock"
-            description="Allowed LTE bands."
+            title={t('LTE band lock')}
+            description={t('Allowed LTE bands.')}
             supported={capabilities.lte_bands}
             type="lte"
             state={lte}
@@ -175,36 +178,36 @@ export default function Locking() {
         <CellLock type="lte" ops={ops} onLock={lockCell} />
       </div>
 
-      <Card title="Reset locks">
+      <Card title={t('Reset locks')}>
         <p className="mb-3 text-meta text-ink2">
-          Remove all band and cell locks; the modem returns to automatic selection.
+          {t('Remove all band and cell locks; the modem returns to automatic selection.')}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={resetBands} disabled={busy}>
-            Reset bands to automatic
+            {t('Reset bands to automatic')}
           </Button>
           <Button variant="outline" onClick={resetCells} disabled={busy}>
-            Reset cell locks
+            {t('Reset cell locks')}
           </Button>
         </div>
       </Card>
 
-      <Card title="Diagnostics">
+      <Card title={t('Diagnostics')}>
         <div className="tnum space-y-1 break-all font-mono text-caption text-ink3">
           <p>
-            LTE lock (raw): <span className="text-ink">{signal.raw_lte_band_lock || '(empty)'}</span>
+            {t('LTE lock (raw):')} <span className="text-ink">{signal.raw_lte_band_lock || t('(empty)')}</span>
           </p>
           <p>
-            NR lock (raw): <span className="text-ink">{signal.raw_nr_band_lock || '(empty)'}</span>
+            {t('NR lock (raw):')} <span className="text-ink">{signal.raw_nr_band_lock || t('(empty)')}</span>
           </p>
           <p>
-            LTE lock (parsed): <span className="text-ink">{describeLockState(signal.lte_band_lock_state)}</span>
+            {t('LTE lock (parsed):')} <span className="text-ink">{describeLockState(signal.lte_band_lock_state)}</span>
           </p>
           <p>
-            NR SA lock (parsed): <span className="text-ink">{describeLockState(signal.nr_sa_band_lock_state)}</span>
+            {t('NR SA lock (parsed):')} <span className="text-ink">{describeLockState(signal.nr_sa_band_lock_state)}</span>
           </p>
           <p>
-            Network mode: <span className="text-ink">{signal.net_select || '(unknown)'}</span>
+            {t('Network mode:')} <span className="text-ink">{signal.net_select || t('(unknown)')}</span>
           </p>
         </div>
       </Card>

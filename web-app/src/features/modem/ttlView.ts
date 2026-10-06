@@ -1,5 +1,6 @@
 // TTL status interpretation (PLAN2 R07/U03). Unreadable fields are unknown, never "disabled".
 
+import { t } from '../../i18n'
 import type { TtlStatus } from '../../types'
 
 export type TtlState = 'active' | 'inactive' | 'unknown'
@@ -15,7 +16,7 @@ export function ttlState(s: TtlStatus | null | undefined): TtlState {
 export function ttlFamilies(s: TtlStatus | null | undefined): string | null {
   if (!s || ttlState(s) !== 'active') return null
   if (s.active && s.ipv6_active) return 'IPv4 + IPv6'
-  return s.active ? 'IPv4 only' : 'IPv6 only'
+  return s.active ? t('IPv4 only') : t('IPv6 only')
 }
 
 export const DEFAULT_TTL = '65'
@@ -30,9 +31,9 @@ export function ttlInputValue(draft: string | null, s: TtlStatus | null | undefi
 export type TtlParse = { ok: true; ttl: number } | { ok: false; error: string }
 
 export function parseTtl(text: string): TtlParse {
-  const t = text.trim()
-  if (!/^\d{1,3}$/.test(t)) return { ok: false, error: 'Enter a whole number from 1 to 255.' }
-  const ttl = Number(t)
-  if (ttl < 1 || ttl > 255) return { ok: false, error: 'Enter a whole number from 1 to 255.' }
+  const trimmed = text.trim()
+  if (!/^\d{1,3}$/.test(trimmed)) return { ok: false, error: t('Enter a whole number from 1 to 255.') }
+  const ttl = Number(trimmed)
+  if (ttl < 1 || ttl > 255) return { ok: false, error: t('Enter a whole number from 1 to 255.') }
   return { ok: true, ttl }
 }

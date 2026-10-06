@@ -3,6 +3,7 @@ import { login, setToken } from '../data/client'
 import { Mark } from '../ui/Mark'
 import { Button } from '../ui/controls'
 import { Segmented } from '../ui/controls'
+import { t } from '../i18n'
 
 function isMobilePinClient() {
   const ua = navigator.userAgent
@@ -31,7 +32,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
       setToken(token)
       onAuthed()
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Sign in failed')
+      setErr(error instanceof Error ? error.message : t('Sign in failed'))
     } finally {
       setBusy(false)
     }
@@ -45,7 +46,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
         <div className="mb-6 flex flex-col items-center text-center">
           <Mark size={36} className="mb-3 text-ink" />
           <h1 className="font-display text-xl font-semibold tracking-[-0.015em] text-ink">ZTE U60 Pro</h1>
-          <p className="mt-0.5 text-body text-ink2">Sign in to the dashboard</p>
+          <p className="mt-0.5 text-body text-ink2">{t('Sign in to the dashboard')}</p>
         </div>
 
         <form
@@ -57,10 +58,10 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
               <Segmented
                 options={[
                   { value: 'pin', label: 'PIN' },
-                  { value: 'password', label: 'Password' },
+                  { value: 'password', label: t('Password') },
                 ]}
                 value={mode}
-                label="Sign-in method"
+                label={t('Sign-in method')}
                 onChange={(m) => {
                   setMode(m)
                   setErr('')
@@ -92,7 +93,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
           ) : (
             <div>
               <label htmlFor={pwId} className="label mb-1 block">
-                Agent password
+                {t('Agent password')}
               </label>
               <input
                 id={pwId}
@@ -100,7 +101,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 className="h-11 w-full rounded-ctl border border-line/12 bg-surface2/50 px-3.5 text-sm text-ink transition-colors placeholder:text-ink3 focus:border-accent"
-                placeholder="Agent password"
+                placeholder={t('Agent password')}
                 autoFocus
                 autoComplete="current-password"
               />
@@ -110,7 +111,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
           {err && <p className="text-xs font-medium text-danger">{err}</p>}
 
           <Button type="submit" variant="primary" loading={busy} disabled={!canSubmit} className="w-full !h-11">
-            Sign in
+            {t('Sign in')}
           </Button>
         </form>
       </div>

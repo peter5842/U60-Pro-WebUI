@@ -4,25 +4,26 @@ import { AlertBanner } from './AlertBanner'
 import { IGauge, IGlobe, IHome, IRoute, ISim, ISignal, IMoon, ISun } from '../icons'
 import { Mark } from '../ui/Mark'
 import { Spinner } from '../ui/primitives'
+import { t } from '../i18n'
 
 export type Group = 'home' | 'signal' | 'network' | 'modem' | 'proxy' | 'system'
 
 export const NAV: { id: Group; label: string; icon: (p: { size?: number; className?: string }) => ReactNode }[] = [
-  { id: 'home', label: 'Home', icon: (p) => <IHome {...p} /> },
-  { id: 'signal', label: 'Signal', icon: (p) => <ISignal {...p} /> },
-  { id: 'network', label: 'Network', icon: (p) => <IGlobe {...p} /> },
-  { id: 'modem', label: 'Modem', icon: (p) => <ISim {...p} /> },
-  { id: 'proxy', label: 'Proxy', icon: (p) => <IRoute {...p} /> },
-  { id: 'system', label: 'System', icon: (p) => <IGauge {...p} /> },
+  { id: 'home', label: t('Home'), icon: (p) => <IHome {...p} /> },
+  { id: 'signal', label: t('Signal'), icon: (p) => <ISignal {...p} /> },
+  { id: 'network', label: t('Network'), icon: (p) => <IGlobe {...p} /> },
+  { id: 'modem', label: t('Modem'), icon: (p) => <ISim {...p} /> },
+  { id: 'proxy', label: t('Proxy'), icon: (p) => <IRoute {...p} /> },
+  { id: 'system', label: t('System'), icon: (p) => <IGauge {...p} /> },
 ]
 
 const GROUP_TITLES: Record<Group, string> = {
-  home: 'Home',
-  signal: 'Signal',
-  network: 'Network',
-  modem: 'Modem',
-  proxy: 'Proxy',
-  system: 'System',
+  home: t('Home'),
+  signal: t('Signal'),
+  network: t('Network'),
+  modem: t('Modem'),
+  proxy: t('Proxy'),
+  system: t('System'),
 }
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ export default function Shell({
           </div>
         </div>
 
-        <nav aria-label="Main" className="flex-1 space-y-0.5 px-3">
+        <nav aria-label={t('Main')} className="flex-1 space-y-0.5 px-3">
           {NAV.map((item) => (
             <button
               key={item.id}
@@ -84,7 +85,7 @@ export default function Shell({
             className="flex items-center gap-2 text-meta font-medium text-ink2 transition-colors hover:text-ink coarse:min-h-11"
           >
             {themeIcon}
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            {theme === 'dark' ? t('Light mode') : t('Dark mode')}
           </button>
         </div>
       </aside>
@@ -100,7 +101,7 @@ export default function Shell({
           <button
             onClick={onToggleTheme}
             className="flex h-8 w-8 items-center justify-center rounded-ctl text-ink2 transition-colors hover:bg-surface2 hover:text-ink coarse:h-11 coarse:w-11"
-            aria-label="Toggle theme"
+            aria-label={t('Toggle theme')}
           >
             {themeIcon}
           </button>
@@ -123,7 +124,7 @@ export default function Shell({
 
         {/* Mobile bottom tabs */}
         <nav
-          aria-label="Main"
+          aria-label={t('Main')}
           className="fixed inset-x-0 bottom-0 z-30 border-t border-line/8 bg-surface lg:hidden"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
