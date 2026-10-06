@@ -401,6 +401,10 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
                 "dns-hijack": [],
             }),
         );
+        // Without DNS hijack, LAN clients resolve through dnsmasq and may get
+        // poisoned addresses: the sniffed domain must replace the destination
+        // so mihomo (or the node) connects to the real host. A provider's
+        // sniffer keeps its skip list and ports.
         let sniffing = obj
             .get("sniffer")
             .and_then(|v| v["enable"].as_bool())
@@ -411,12 +415,20 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
                 json!({
                     "enable": true,
                     "sniff": {
-                        "HTTP": {"ports": [80, "8080-8880"], "override-destination": true},
+                        "HTTP": {"ports": [80, "8080-8880"]},
                         "TLS": {"ports": [443, 8443]},
                         "QUIC": {"ports": [443]},
                     },
                 }),
             );
+        }
+        if let Some(sniffer) = obj.get_mut("sniffer").and_then(Value::as_object_mut) {
+            sniffer.insert("override-destination".into(), json!(true));
+            if let Some(protocols) = sniffer.get_mut("sniff").and_then(Value::as_object_mut) {
+                for proto in protocols.values_mut().filter_map(Value::as_object_mut) {
+                    proto.insert("override-destination".into(), json!(true));
+                }
+            }
         }
     }
 }
@@ -545,6 +557,19 @@ mod tests {
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
         assert_eq!(c["tun"]["dns-hijack"], json!([]));
         assert_eq!(c["sniffer"]["sniff"]["TLS"]["ports"], json!([443]));
+        // No DNS hijack on the router: sniffed domains must override poisoned IPs.
+        assert_eq!(c["sniffer"]["override-destination"], true);
+        assert_eq!(c["sniffer"]["sniff"]["TLS"]["override-destination"], true);
+    }
+
+    #[test]
+    fn without_tun_the_provider_sniffer_is_untouched() {
+        let state = State::default();
+        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        assert!(c["sniffer"].get("override-destination").is_none());
+        assert!(c["sniffer"]["sniff"]["TLS"]
+            .get("override-destination")
+            .is_none());
     }
 
     #[test]

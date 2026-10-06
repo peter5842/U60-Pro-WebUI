@@ -1272,6 +1272,38 @@ mod device_tests {
         body["data"].clone()
     }
 
+    /// Turn TUN on for `E2E_HOLD_SECS` (default 60) so LAN clients can be
+    /// tested, then restore the previous TUN setting.
+    #[test]
+    #[ignore = "turns TUN on for a while on a real U60 Pro, then restores it"]
+    fn device_tun_hold() {
+        let m = Manager::new();
+        let before = m.lock().state.settings.tun;
+        let (code, v) = m.settings_set(br#"{"tun":true}"#);
+        println!("tun on: {code} error={}", v["error"]);
+        assert!(code < 300);
+        assert_eq!(v["data"]["tun_active"], true);
+        assert!(service::firewall_present());
+        println!("READY route={}", v["data"]["route"]);
+        let secs = std::env::var("E2E_HOLD_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(60);
+        std::thread::sleep(Duration::from_secs(secs));
+        let (_, st) = m.status();
+        println!(
+            "after hold: running={} traffic={}",
+            st["data"]["running"], st["data"]["traffic"]
+        );
+        if !before {
+            let (code, v) = m.settings_set(br#"{"tun":false}"#);
+            println!("tun off: {code} tun_active={}", v["data"]["tun_active"]);
+            assert!(code < 300);
+            assert!(!service::tun_active());
+            assert!(!service::firewall_present());
+        }
+    }
+
     /// Switch the first subscription to its own full config and report a
     /// summary (no URLs, no node credentials). Leaves the profile active.
     #[test]
