@@ -179,8 +179,10 @@ regained and this is deployed again.
 - `mihomo/` (proxy): while TUN is enabled and mihomo runs, inserts tagged
   (`mihomo-tun`) ACCEPT rules at the top of FORWARD/INPUT for `br-lan`↔`mihomo`
   and `-i mihomo`, and mihomo adds ip rules 9000–9099 / table 2022 limited to
-  `iif br-lan`. All runtime only, removed on stop, gone after a reboot; the
-  router's own traffic and management ports are never routed into the TUN.
+  `iif br-lan`. All runtime only and removed on stop; when TUN is enabled the
+  agent re-applies them after boot (never via firewall includes or init.d).
+  The router's own traffic and management ports are never routed into the
+  TUN, and the forwarding watchdog turns TUN off if mihomo stops forwarding.
 - `usb::enforce_usb_mode_on_boot()` rebuilds the USB configfs gadget **only
   if NCM was explicitly persisted** (`/data/local/tmp/usb_config.json`),
   waits up to 75 s for the stock USB stack to finish (bridge-membership

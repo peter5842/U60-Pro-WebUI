@@ -125,7 +125,8 @@ export const proxy: Record<string, string> = {
   'Every device on this router’s Wi-Fi and USB is routed through mihomo without any device setup. The router’s own traffic and its management pages are not affected.':
     '连接本路由器 Wi-Fi 和 USB 的所有设备都会经由 mihomo，无需在设备上设置。路由器自身的流量和管理页面不受影响。',
   'mihomo restarts; open connections drop for a few seconds.': 'mihomo 会重启，现有连接会中断几秒。',
-  'Turn it off here, or reboot the router — nothing is written to the firmware.': '在此处关闭，或重启路由器即可恢复；不会写入固件。',
+  'Turn it off here at any time. If forwarding fails, the router turns TUN off by itself; its own pages stay reachable.':
+    '可随时在此关闭。如果转发出现故障，路由器会自动关闭 TUN；路由器自身的管理页面始终可以访问。',
   'Turn off transparent proxy?': '关闭透明代理？',
   'Devices go back to the normal route unless they use the proxy address or PAC URL.': '除非设备配置了代理地址或 PAC 地址，否则会恢复正常线路。',
   'Transparent proxy on': '透明代理已开启',
@@ -141,8 +142,8 @@ export const proxy: Record<string, string> = {
   'Transparent proxy (TUN)': '透明代理（TUN）',
   Active: '使用中',
   Enabled: '已启用',
-  'Captures traffic from devices on the LAN (Wi-Fi and USB) so they need no proxy settings. Domains are recognised from TLS/HTTP, DNS is left to the router. The firewall rules it needs exist only while mihomo runs; a reboot always restores the stock route.':
-    '接管局域网（Wi-Fi 和 USB）设备的流量，设备无需任何代理设置。域名通过 TLS/HTTP 识别，DNS 仍由路由器负责。所需的防火墙规则只在 mihomo 运行期间存在，重启路由器总会恢复原厂线路。',
+  'Captures traffic from devices on the LAN (Wi-Fi and USB) so they need no proxy settings. Domains are recognised from TLS/HTTP, DNS is left to the router. While on, it comes back automatically after a reboot. Its firewall rules are added at runtime and never written to the firmware; turning this off restores the stock route immediately.':
+    '接管局域网（Wi-Fi 和 USB）设备的流量，设备无需任何代理设置。域名通过 TLS/HTTP 识别，DNS 仍由路由器负责。开启后，路由器重启会自动恢复 TUN。所需的防火墙规则在运行时添加，不写入固件；关闭此开关即可立即恢复原厂线路。',
   'Transparent proxy': '透明代理',
   'Proxy port': '代理端口',
   'HTTP / SOCKS5 port': 'HTTP / SOCKS5 端口',
@@ -222,4 +223,5 @@ export const proxy: Record<string, string> = {
     '适用于提供完整 Clash/mihomo 配置的服务商（推荐）。关闭后只使用其中的节点，规则由面板托管。',
   'Forwarding OK': '转发正常',
   'Not forwarding': '转发异常',
+  'Starts at boot': '开机自启',
 }

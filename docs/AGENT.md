@@ -117,7 +117,12 @@ release, GitHub SHA-256 verified on both ends).
   (`mihomo-tun`) iptables/ip6tables accepts at the top of FORWARD and INPUT,
   re-asserts them every 15 s (fw3/QCMAP reloads flush them), and removes them on
   stop. A force-killed mihomo's ip rules (prefs 9000–9099, table 2022) are
-  cleaned up. Nothing is persisted: a reboot restores the stock route.
+  cleaned up. Nothing is written to the firmware: with TUN enabled the agent
+  re-applies the rules at boot; turning TUN off restores the stock route.
+- **Forwarding watchdog**: every 60 s a mainland 204 endpoint is fetched
+  through the mixed port (and directly when that fails, to rule out a WAN
+  outage). Three failures through mihomo restart it; if it still does not
+  forward, TUN is turned off so LAN clients regain the normal route.
 - **Device test**: `mihomo::device_tests::device_e2e` (ignored) exercises start,
   TUN, hot reload, kill-and-restart and firewall re-assertion on real hardware.
 

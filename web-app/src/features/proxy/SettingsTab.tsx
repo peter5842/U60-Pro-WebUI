@@ -40,7 +40,7 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
             body: t('Every device on this router’s Wi-Fi and USB is routed through mihomo without any device setup. The router’s own traffic and its management pages are not affected.'),
             kind: 'connection',
             consequence: s?.running ? t('mihomo restarts; open connections drop for a few seconds.') : undefined,
-            recovery: t('Turn it off here, or reboot the router — nothing is written to the firmware.'),
+            recovery: t('Turn it off here at any time. If forwarding fails, the router turns TUN off by itself; its own pages stay reachable.'),
           }
         : {
             title: t('Turn off transparent proxy?'),
@@ -110,10 +110,15 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
       >
         <div className="flex items-start justify-between gap-4">
           <p className="text-meta text-ink2">
-            {t('Captures traffic from devices on the LAN (Wi-Fi and USB) so they need no proxy settings. Domains are recognised from TLS/HTTP, DNS is left to the router. The firewall rules it needs exist only while mihomo runs; a reboot always restores the stock route.')}
+            {t('Captures traffic from devices on the LAN (Wi-Fi and USB) so they need no proxy settings. Domains are recognised from TLS/HTTP, DNS is left to the router. While on, it comes back automatically after a reboot. Its firewall rules are added at runtime and never written to the firmware; turning this off restores the stock route immediately.')}
           </p>
           <Toggle checked={s.tun} onChange={(v) => void setTun(v)} disabled={!!busy || !s.installed} label={t('Transparent proxy')} />
         </div>
+        {s.tun && (
+          <div className="mt-3 border-t border-line/8 pt-3">
+            <Row label={t('Starts at boot')} value={s.enabled ? t('Yes') : t('No — start it on Overview')} />
+          </div>
+        )}
       </Card>
 
       <Card title={t('Proxy port')}>
