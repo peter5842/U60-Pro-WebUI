@@ -2,9 +2,15 @@
 
 > Fork of [dklasens/MU5250-OpenUI](https://github.com/dklasens/MU5250-OpenUI)
 > that adds a **mihomo proxy manager** (subscriptions, node selection, rule
-> presets, PAC, optional LAN-wide transparent proxy via TUN) and is working
-> towards controlling as much of the device as the firmware allows. Verified on
-> CN firmware `BD_CNMU5250V1.0.0B31`.
+> presets, PAC, LAN-wide transparent proxy via TUN with a mainland bypass that
+> keeps domestic traffic on hardware offload) and control of as much of the
+> device as the firmware allows: mobile data and monthly limit, guest Wi-Fi,
+> per-device names/traffic/blocking, port forwarding, DMZ/UPnP, static DHCP,
+> connection watchdog, sleep and scheduled reboot, carrier selection, SMS
+> forwarding, and settings backup. The dashboard defaults to Chinese with an
+> English switch. Verified on CN firmware `BD_CNMU5250V1.0.0B31`.
+>
+> 中文使用说明：[docs/GUIDE.zh-CN.md](docs/GUIDE.zh-CN.md)
 
 A custom control plane for the ZTE U60 Pro (MU5250) 5G modem: a Rust agent
 running on the device exposes a JSON API (`http://192.168.0.1:9090`), and a
@@ -13,6 +19,15 @@ into a full-featured modem management UI — plus tooling to unlock, provision
 and update both.
 
 Credit: based on [jesther-ai/open-u60-pro](https://github.com/jesther-ai/open-u60-pro).
+
+| | |
+|---|---|
+| ![代理概览](docs/images/proxy.png) | ![节点](docs/images/proxy-nodes.png) |
+| ![终端与设备管理](docs/images/network-clients.png) | ![端口转发、DMZ 与 UPnP](docs/images/network-ports.png) |
+| ![短信与短信转发](docs/images/modem-sms.png) | ![系统设置](docs/images/system.png) |
+
+Screenshots: demo data from the mock agent (`web-app/tools/screenshots.mjs`).
+Upstream's English screenshots:
 
 <img width="2730" height="1708" alt="Dashboard-Home" src="https://github.com/user-attachments/assets/ed8594a8-af21-4b97-a898-531c7bb6c03a" />
 <img width="2734" height="1708" alt="Signal" src="https://github.com/user-attachments/assets/793c3797-b8d7-4933-bf28-b7c3a4650f72" />
@@ -61,11 +76,11 @@ Browser ── HTTP/JSON ──► React dashboard (:8080, isolated uhttpd, /dat
 | Group | What you get |
 |---|---|
 | **Home** | live signal, modem mode, throughput, battery, connection, device info and data usage from a single batched poll |
-| **Signal** | per-carrier LTE/NR detail (PCI, ARFCN, RSRP/RSRQ/SINR), matching UL and Active/Idle indicators on desktop and mobile when reported, network mode, band lock, one-tap cell lock from live cells |
-| **Network** | clients by Wi-Fi/USB-C/Ethernet with link details, validated per-band Wi-Fi updates with rollback on observed failures, LAN/DHCP changes with reconnection confirmation and automatic rollback, DNS |
-| **Modem** | manual APN profiles, data usage + reset day, TTL clamping, SMS (inbox/sent, compose, delete) |
-| **Proxy** | mihomo service control with live throughput, subscription management (add/edit/update, usage and expiry from the provider), node list with latency tests and one-tap switching, Rule/Global/Direct modes, routing presets (bypass mainland China / GFW list / proxy everything), PAC + manual proxy setup for devices, optional transparent proxy (TUN) for the whole LAN with a self-healing watchdog |
-| **System** | thermals, battery health, reconciled charge control (stop/resume + limit enforcer), signal/connection loggers with CSV export, read-only AT console, on-demand process list, device/SIM info, guarded USB mode + powerbank transitions, power actions |
+| **Signal** | per-carrier LTE/NR detail (PCI, ARFCN, RSRP/RSRQ/SINR), matching UL and Active/Idle indicators on desktop and mobile when reported, network mode, band lock, one-tap cell lock from live cells, manual carrier search and registration with a way back to automatic |
+| **Network** | clients by Wi-Fi/USB-C/Ethernet with link details, per-device names, internet traffic and rates, Wi-Fi disconnect and a Wi-Fi block list; validated per-band Wi-Fi updates with rollback on observed failures and a guest network (password, time limit); LAN/DHCP changes with reconnection confirmation and automatic rollback, fixed IP addresses (static DHCP), DNS; port forwarding and mapping, UPnP, DMZ, remote management and WAN ping |
+| **Modem** | mobile data on/off, manual APN profiles (add, edit, activate), data usage + reset day + monthly limit with alert, TTL clamping, SMS (inbox/sent, compose, delete) and SMS forwarding to Bark, Server酱, WeCom, Telegram or a webhook |
+| **Proxy** | mihomo service control with live throughput and the route in use, subscription management (add/edit/update, usage and expiry from the provider, or the subscription's own full config with its groups and rules), node groups with latency tests and one-tap switching, Rule/Global/Direct modes, routing presets, PAC + manual proxy setup for devices, transparent proxy (TUN) for the whole LAN that survives reboots, a mainland bypass that keeps domestic traffic on hardware offload, its own NTP clock and a self-healing watchdog |
+| **System** | thermals, battery health, reconciled charge control (stop/resume + limit enforcer), signal/connection loggers with CSV export, read-only AT console, on-demand process list, device/SIM info with PIN status and the router clock, guarded USB mode + powerbank transitions, device sleep, scheduled reboot, connection watchdog, settings backup and restore, power actions |
 
 v2.3 also refreshes the home/login and Signal icons and browser favicon. The
 screenshots above are retained as an overview; minor artwork and status details
