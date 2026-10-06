@@ -8,7 +8,7 @@ import { Card, Chip, InlineStatus, Row, Skeleton } from '../../ui/primitives'
 import { PRESET_OPTIONS, validatePort } from './proxyView'
 import { t } from '../../i18n'
 
-type Busy = 'preset' | 'tun' | 'port' | null
+type Busy = 'preset' | 'tun' | 'bypass' | 'port' | null
 
 export default function SettingsTab({ status }: { status: PollResult<ProxyStatus> }) {
   const [busy, setBusy] = useState<Busy>(null)
@@ -119,6 +119,27 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
             <Row label={t('Starts at boot')} value={s.enabled ? t('Yes') : t('No — start it on Overview')} />
           </div>
         )}
+        <div className="mt-3 flex items-start justify-between gap-4 border-t border-line/8 pt-3">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
+              {t('Mainland traffic bypasses TUN')}
+              {s.tun_active && s.cn_bypass && (
+                <Chip tone={s.cn_bypass_active ? 'ok' : 'warn'}>{s.cn_bypass_active ? t('Active') : t('Not applied')}</Chip>
+              )}
+            </p>
+            <p className="text-meta text-ink2">
+              {s.cn_bypass_available
+                ? t('Connections to mainland China IP addresses skip mihomo and use the router’s hardware path: faster and lighter on the CPU and battery. Rules that send a mainland IP through a proxy no longer apply to TUN traffic.')
+                : t('The mainland IP list is not installed on the router; run scripts/deploy-mihomo.sh once.')}
+            </p>
+          </div>
+          <Toggle
+            checked={s.cn_bypass}
+            onChange={(v) => void save('bypass', { cn_bypass: v }, v ? t('Mainland bypass on') : t('Mainland bypass off'))}
+            disabled={!!busy || !s.cn_bypass_available}
+            label={t('Mainland traffic bypasses TUN')}
+          />
+        </div>
       </Card>
 
       <Card title={t('Proxy port')}>

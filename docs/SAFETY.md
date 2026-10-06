@@ -183,6 +183,9 @@ regained and this is deployed again.
   agent re-applies them after boot (never via firewall includes or init.d).
   The router's own traffic and management ports are never routed into the
   TUN, and the forwarding watchdog turns TUN off if mihomo stops forwarding.
+  The mainland bypass adds one tagged mangle PREROUTING MARK rule (`-i br-lan`,
+  ipset `mihomo-cn`, mark `0x10000000`), ip rule 8999 (`fwmark … lookup
+  main`) and the ipset itself; same lifecycle as the accepts.
 - `usb::enforce_usb_mode_on_boot()` rebuilds the USB configfs gadget **only
   if NCM was explicitly persisted** (`/data/local/tmp/usb_config.json`),
   waits up to 75 s for the stock USB stack to finish (bridge-membership

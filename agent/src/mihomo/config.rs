@@ -62,6 +62,9 @@ pub struct Settings {
     pub preset: Preset,
     /// Capture LAN traffic transparently through the `mihomo` TUN device.
     pub tun: bool,
+    /// With TUN: send LAN traffic to mainland IPv4 ranges around the TUN
+    /// (stock path, hardware offload) instead of through mihomo.
+    pub cn_bypass: bool,
     pub mixed_port: u16,
     /// Subscription whose own full config (groups, rules, rule sets) is used.
     /// `None`: the managed config (subscriptions as node providers + `preset`).
@@ -75,6 +78,7 @@ impl Default for Settings {
             mode: Mode::Rule,
             preset: Preset::BypassCn,
             tun: false,
+            cn_bypass: true,
             mixed_port: DEFAULT_PORT,
             profile: None,
         }

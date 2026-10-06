@@ -71,6 +71,8 @@ struct Inner {
     firewall_checked: Option<Instant>,
     profile_attempt: Option<Instant>,
     health: Health,
+    /// The mainland bypass rules were in place at the last check.
+    bypass_active: bool,
 }
 
 /// Is mihomo still forwarding? (A live process can hang with the TUN up,
@@ -196,6 +198,7 @@ impl Manager {
                 sub_errors: HashMap::new(),
                 traffic: None,
                 firewall_checked: None,
+                bypass_active: false,
                 profile_attempt: None,
                 health: Health::default(),
             }),
@@ -522,6 +525,37 @@ impl Inner {
                     self.last_error = Some(e);
                 }
             }
+            self.sync_bypass();
+        }
+    }
+
+    /// Bring the mainland bypass in line with the settings (TUN running and
+    /// `cn_bypass` on, list installed). Failures are reported, never fatal:
+    /// without the bypass everything still flows through the TUN.
+    fn sync_bypass(&mut self) {
+        let want = self.state.settings.tun
+            && self.state.settings.cn_bypass
+            && self.alive()
+            && service::bypass_available();
+        if want {
+            if !service::bypass_present() {
+                match service::bypass_add() {
+                    Ok(0) => eprintln!("[mihomo] mainland bypass rules restored"),
+                    Ok(n) => eprintln!("[mihomo] mainland bypass on ({n} prefixes)"),
+                    Err(e) => {
+                        eprintln!("[mihomo] mainland bypass failed: {e}");
+                        self.last_error = Some(format!("mainland bypass: {e}"));
+                        service::bypass_remove();
+                    }
+                }
+            }
+            self.bypass_active = service::bypass_present();
+        } else {
+            if self.bypass_active || service::bypass_present() {
+                service::bypass_remove();
+                eprintln!("[mihomo] mainland bypass off");
+            }
+            self.bypass_active = false;
         }
     }
 
@@ -583,6 +617,7 @@ impl Inner {
         self.process = Some(process);
         self.traffic = None;
         self.last_error = None;
+        self.sync_bypass();
         if self.version.is_none() {
             self.version = service::version();
         }
@@ -597,6 +632,7 @@ impl Inner {
         service::firewall_remove();
         service::cleanup_routing();
         self.traffic = None;
+        self.bypass_active = false;
     }
 
     fn restart(&mut self) -> Result<(), String> {
@@ -640,6 +676,7 @@ impl Inner {
             return Err(e);
         }
         self.notice = None;
+        self.sync_bypass();
         Ok(())
     }
 
@@ -712,6 +749,9 @@ impl Inner {
             "profile": profile,
             "tun": s.tun,
             "tun_active": service::tun_active(),
+            "cn_bypass": s.cn_bypass,
+            "cn_bypass_active": self.bypass_active,
+            "cn_bypass_available": service::bypass_available(),
             "mixed_port": s.mixed_port,
             "lan_ip": ip,
             "proxy_address": ip.as_ref().map(|ip| format!("{ip}:{}", s.mixed_port)),
@@ -851,7 +891,7 @@ impl Manager {
         let mut inner = self.lock();
         let mut next = inner.state.clone();
         for key in v.as_object().unwrap().keys() {
-            if !["mode", "preset", "tun", "mixed_port"].contains(&key.as_str()) {
+            if !["mode", "preset", "tun", "cn_bypass", "mixed_port"].contains(&key.as_str()) {
                 return bad(format!("unknown setting '{key}'"));
             }
         }
@@ -871,6 +911,12 @@ impl Manager {
             match t.as_bool() {
                 Some(t) => next.settings.tun = t,
                 None => return bad("tun must be a boolean"),
+            }
+        }
+        if let Some(b) = v.get("cn_bypass") {
+            match b.as_bool() {
+                Some(b) => next.settings.cn_bypass = b,
+                None => return bad("cn_bypass must be a boolean"),
             }
         }
         if let Some(p) = v.get("mixed_port") {
@@ -1481,6 +1527,7 @@ mod tests {
                     sub_errors: HashMap::new(),
                     traffic: None,
                     firewall_checked: None,
+                    bypass_active: false,
                     profile_attempt: None,
                     health: Health::default(),
                 }),

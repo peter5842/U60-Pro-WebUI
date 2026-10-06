@@ -1068,7 +1068,7 @@ export const api = {
   // Proxy (mihomo). Changes re-validate the config and may restart mihomo,
   // and subscription updates fetch from the network: allow longer timeouts.
   proxyStatus: () => get('/api/proxy/status').then(mapProxyStatus),
-  proxySettings: (body: { mode?: ProxyMode; preset?: ProxyPreset; tun?: boolean; mixed_port?: number }) =>
+  proxySettings: (body: { mode?: ProxyMode; preset?: ProxyPreset; tun?: boolean; cn_bypass?: boolean; mixed_port?: number }) =>
     req('PUT', '/api/proxy/settings', body, undefined, 45_000).then(mapProxyStatus),
   proxyService: (action: 'start' | 'stop' | 'restart') =>
     req('POST', '/api/proxy/service', { action }, undefined, 45_000).then(mapProxyStatus),

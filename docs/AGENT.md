@@ -38,7 +38,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |
 | Power | `GET+PUT /api/device/charge-control` — manual stop/resume + limit enforcer with hysteresis, event-driven off `BSP_CHARGER_EVENT` |
 | Extras | TTL clamping (`GET /api/ttl/status`, `PUT /api/ttl/set`, `DELETE /api/ttl/clear`), AT console (`POST /api/at/send`, `GET /api/at/port`), signal/connection CSV loggers (`/api/logger/*`) |
-| Proxy (mihomo) | `GET /api/proxy/status`; `PUT /api/proxy/settings` (mode, preset, tun, mixed_port); `POST /api/proxy/service` (start/stop/restart); `GET`/`POST`/`PUT /api/proxy/subscriptions`, `POST /api/proxy/subscriptions/delete` (X-Confirm), `POST /api/proxy/subscriptions/update`; `GET`/`PUT /api/proxy/groups`; `POST /api/proxy/delay`. Plus unauthenticated `GET /proxy.pac` for LAN devices |
+| Proxy (mihomo) | `GET /api/proxy/status`; `PUT /api/proxy/settings` (mode, preset, tun, cn_bypass, mixed_port); `POST /api/proxy/service` (start/stop/restart); `GET`/`POST`/`PUT /api/proxy/subscriptions`, `POST /api/proxy/subscriptions/delete` (X-Confirm), `POST /api/proxy/subscriptions/update`; `GET`/`PUT /api/proxy/groups`; `POST /api/proxy/delay`. Plus unauthenticated `GET /proxy.pac` for LAN devices |
 
 ## Architecture notes
 
@@ -127,6 +127,15 @@ release, GitHub SHA-256 verified on both ends).
   stop. A force-killed mihomo's ip rules (prefs 9000–9099, table 2022) are
   cleaned up. Nothing is written to the firmware: with TUN enabled the agent
   re-applies the rules at boot; turning TUN off restores the stock route.
+- **Mainland bypass** (`settings.cn_bypass`, default on): TUN costs about one
+  A55 core per 100 Mbit/s (measured 2026-10-06: ~90 Mbit/s domestic at 80–90%
+  of a core). With the bypass, LAN packets to mainland IPv4 ranges (ipset
+  `mihomo-cn`, loaded from `/data/mihomo/cn.list`, which `deploy-mihomo.sh`
+  installs from a pinned MetaCubeX commit) get mark `0x10000000` in mangle
+  PREROUTING, and ip rule 8999 sends them through the main table ahead of
+  sing-tun's rules, so they keep the stock path and IPA offload (measured
+  138–195 Mbit/s at ~0% mihomo CPU). Runtime only, re-asserted with the
+  accepts, removed with them.
 - **Forwarding watchdog**: every 60 s a mainland 204 endpoint is fetched
   through the mixed port (and directly when that fails, to rule out a WAN
   outage). Three failures through mihomo restart it; if it still does not

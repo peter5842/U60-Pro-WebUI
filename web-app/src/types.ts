@@ -523,6 +523,11 @@ export interface ProxyStatus {
   preset?: ProxyPreset
   tun: boolean
   tun_active: boolean
+  /** With TUN: mainland destinations skip mihomo (stock path, hardware offload). */
+  cn_bypass: boolean
+  cn_bypass_active: boolean
+  /** The mainland IP list is installed on the router. */
+  cn_bypass_available: boolean
   mixed_port?: number
   lan_ip?: string
   proxy_address?: string

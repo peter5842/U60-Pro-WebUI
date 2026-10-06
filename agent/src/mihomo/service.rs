@@ -273,6 +273,7 @@ pub fn firewall_add() -> Result<(), String> {
 }
 
 pub fn firewall_remove() {
+    bypass_remove();
     for bin in ["iptables", "ip6tables"] {
         for rule in fw_rules() {
             // Remove every copy, bounded in case -D keeps "succeeding".
@@ -323,6 +324,173 @@ pub fn cleanup_routing() {
             .args(["link", "del", TUN_DEVICE])
             .bounded_output();
     }
+}
+
+// ── Mainland bypass for the TUN ──────────────────────────────────────────────
+//
+// TUN costs about one CPU core per 100 Mbit/s here (measured 2026-10-06), and
+// mainland destinations go DIRECT anyway. LAN packets to mainland IPv4 ranges
+// (an ipset loaded from CN_LIST) get a mark, and one ip rule ahead of
+// sing-tun's (8999 < 9000) sends marked packets through the main table, so
+// they keep the stock path and IPA offload. Runtime only, like the accepts.
+
+pub const CN_LIST: &str = "/data/mihomo/cn.list";
+const CN_SET: &str = "mihomo-cn";
+const BYPASS_MARK: &str = "0x10000000/0x10000000";
+const BYPASS_PREF: &str = "8999";
+
+pub fn bypass_available() -> bool {
+    Path::new(CN_LIST).exists()
+}
+
+/// IPv4 prefixes from the list (one CIDR per line; IPv6 and junk skipped).
+pub fn cn_prefixes(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| {
+            let Some((addr, len)) = l.split_once('/') else {
+                return false;
+            };
+            addr.parse::<std::net::Ipv4Addr>().is_ok()
+                && len.parse::<u8>().is_ok_and(|n| (1..=32).contains(&n))
+        })
+        .collect()
+}
+
+fn bypass_mark_rule(op: &str) -> bool {
+    let mut args = vec!["-t", "mangle", op, "PREROUTING"];
+    if op == "-I" {
+        args.push("1");
+    }
+    args.extend_from_slice(&[
+        "-i",
+        LAN_BRIDGE,
+        "-m",
+        "set",
+        "--match-set",
+        CN_SET,
+        "dst",
+        "-m",
+        "comment",
+        "--comment",
+        FW_COMMENT,
+        "-j",
+        "MARK",
+        "--set-xmark",
+        BYPASS_MARK,
+    ]);
+    Command::new("iptables")
+        .args(&args)
+        .bounded_output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn bypass_rule_present() -> bool {
+    Command::new("ip")
+        .args(["-4", "rule", "show"])
+        .bounded_output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.starts_with(&format!("{BYPASS_PREF}:")))
+        })
+        .unwrap_or(false)
+}
+
+fn set_present() -> bool {
+    Command::new("ipset")
+        .args(["list", "-n", CN_SET])
+        .bounded_output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+pub fn bypass_present() -> bool {
+    set_present() && bypass_mark_rule("-C") && bypass_rule_present()
+}
+
+/// Load the set (only when missing: a reload costs ~6000 entries) and insert
+/// the mark rule and the ip rule. Returns the number of prefixes loaded.
+pub fn bypass_add() -> Result<usize, String> {
+    let mut loaded = 0;
+    if !set_present() {
+        let text = fs::read_to_string(CN_LIST).map_err(|e| format!("{CN_LIST}: {e}"))?;
+        let prefixes = cn_prefixes(&text);
+        if prefixes.len() < 1000 {
+            return Err(format!(
+                "{CN_LIST} holds only {} IPv4 prefixes; refusing a partial list",
+                prefixes.len()
+            ));
+        }
+        let mut script = format!(
+            "create {CN_SET} hash:net family inet maxelem {} -exist\nflush {CN_SET}\n",
+            (prefixes.len() * 2).max(16384)
+        );
+        for p in &prefixes {
+            script.push_str(&format!("add {CN_SET} {p} -exist\n"));
+        }
+        let out = process_runner::output(
+            Command::new("ipset").arg("restore"),
+            Some(script.as_bytes()),
+            Duration::from_secs(20),
+            64 * 1024,
+        )
+        .map_err(|e| format!("ipset restore: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "ipset restore: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        loaded = prefixes.len();
+    }
+    if !bypass_mark_rule("-C") && !bypass_mark_rule("-I") {
+        return Err("iptables: could not insert the mainland mark rule".into());
+    }
+    if !bypass_rule_present() {
+        let ok = Command::new("ip")
+            .args([
+                "-4",
+                "rule",
+                "add",
+                "pref",
+                BYPASS_PREF,
+                "fwmark",
+                BYPASS_MARK,
+                "lookup",
+                "main",
+            ])
+            .bounded_output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !ok {
+            return Err("ip rule: could not add the mainland bypass rule".into());
+        }
+    }
+    Ok(loaded)
+}
+
+pub fn bypass_remove() {
+    for _ in 0..8 {
+        if !bypass_mark_rule("-D") {
+            break;
+        }
+    }
+    for _ in 0..8 {
+        let ok = Command::new("ip")
+            .args(["-4", "rule", "del", "pref", BYPASS_PREF])
+            .bounded_output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !ok {
+            break;
+        }
+    }
+    // Only possible once no rule references the set.
+    let _ = Command::new("ipset")
+        .args(["destroy", CN_SET])
+        .bounded_output();
 }
 
 pub fn tun_active() -> bool {
@@ -411,6 +579,13 @@ pub fn address_ready(ip: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cn_list_keeps_ipv4_prefixes_only() {
+        let text =
+            "1.0.1.0/24\n 1.0.2.0/23 \n2400:3200::/32\n# comment\n10.0.0.0/33\nbad\n0.0.0.0/0\n";
+        assert_eq!(cn_prefixes(text), ["1.0.1.0/24", "1.0.2.0/23"]);
+    }
 
     #[test]
     fn picks_last_error_message() {

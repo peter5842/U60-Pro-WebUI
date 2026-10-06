@@ -3,14 +3,18 @@
 #
 #   bash scripts/deploy-mihomo.sh [--gateway ADDRESS] [--dry-run]
 #
-# Downloads a pinned mihomo release and the latest MetaCubeX geodata on this
-# computer, verifies every file against the SHA-256 published by GitHub, then
+# Downloads a pinned mihomo release, the latest MetaCubeX geodata and a pinned
+# mainland IPv4 list (for the TUN's mainland bypass) on this computer, verifies
+# every file against a published or pinned SHA-256, then
 # stages each file in /data/mihomo, re-checks the hash on the device and moves
 # it into place. Nothing outside /data/mihomo is touched; the agent manages the
 # process (Proxy page). A running mihomo keeps the old binary until restarted.
 set -euo pipefail
 
 MIHOMO_VERSION=v1.19.32
+# MetaCubeX/meta-rules-dat geo/geoip/cn.list at a fixed commit (bump both together).
+CN_LIST_COMMIT=989c8194a8c01e8d85ab2c33aa7d8af3849d3393
+CN_LIST_SHA256=1c1b257518487ab565e9c91657526b417a2983fe353c4f50a013372aff2e1f18
 GATEWAY="${ZTE_GATEWAY:-192.168.0.1}"
 DRY_RUN=0
 while [ $# -gt 0 ]; do
@@ -62,6 +66,8 @@ for file in geoip.metadb geoip.dat geosite.dat; do
     [ "$(sha "$WORK/$file")" = "$(awk '{print $1}' "$WORK/$file.sha256sum")" ] \
         || { echo "$file failed verification" >&2; exit 1; }
 done
+fetch "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/$CN_LIST_COMMIT/geo/geoip/cn.list" "$WORK/cn.list"
+[ "$(sha "$WORK/cn.list")" = "$CN_LIST_SHA256" ] || { echo "cn.list failed verification" >&2; exit 1; }
 echo "All downloads verified."
 
 if [ "$DRY_RUN" = 1 ]; then
@@ -70,7 +76,7 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 "${SSH[@]}" 'mkdir -p /data/mihomo/providers && chmod 700 /data/mihomo'
-for file in mihomo geoip.metadb geoip.dat geosite.dat; do
+for file in mihomo geoip.metadb geoip.dat geosite.dat cn.list; do
     want=$(sha "$WORK/$file")
     "${SSH[@]}" "set -e; cat > /data/mihomo/$file.new; \
         test \"\$(sha256sum /data/mihomo/$file.new | awk '{print \$1}')\" = $want; \

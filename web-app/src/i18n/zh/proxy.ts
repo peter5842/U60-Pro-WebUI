@@ -225,4 +225,13 @@ export const proxy: Record<string, string> = {
   'Not forwarding': '转发异常',
   'Starts at boot': '开机自启',
   'Proxy route failing': '境外线路异常',
+
+  // Mainland bypass
+  'Mainland traffic bypasses TUN': '国内流量绕过 TUN',
+  'Not applied': '未生效',
+  'Connections to mainland China IP addresses skip mihomo and use the router’s hardware path: faster and lighter on the CPU and battery. Rules that send a mainland IP through a proxy no longer apply to TUN traffic.':
+    '访问中国大陆 IP 的连接不经过 mihomo，直接走路由器的硬件转发通道：更快，也更省 CPU 和电量。把大陆 IP 发往代理的规则对 TUN 流量不再生效。',
+  'The mainland IP list is not installed on the router; run scripts/deploy-mihomo.sh once.': '路由器上还没有安装大陆 IP 列表，请运行一次 scripts/deploy-mihomo.sh。',
+  'Mainland bypass on': '已开启国内流量绕过',
+  'Mainland bypass off': '已关闭国内流量绕过',
 }
