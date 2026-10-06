@@ -478,3 +478,95 @@ export interface HomeData {
   usage: DataUsage | null
   thermal: ThermalInfo | null
 }
+
+// ── Proxy (mihomo) ───────────────────────────────────────────────────────────
+
+export type ProxyMode = 'rule' | 'global' | 'direct'
+export type ProxyPreset = 'bypass_cn' | 'gfw' | 'proxy_all'
+
+export interface ProxyTraffic {
+  up_total?: number
+  down_total?: number
+  /** Bytes/s since the previous status read; absent on the first read. */
+  up_rate?: number
+  down_rate?: number
+  connections?: number
+}
+
+export interface ProxyStatus {
+  installed: boolean
+  version?: string
+  running: boolean
+  pid?: number
+  uptime_secs?: number
+  rss_bytes?: number
+  /** Desired state: run now and start with the agent. */
+  enabled: boolean
+  mode?: ProxyMode
+  preset?: ProxyPreset
+  tun: boolean
+  tun_active: boolean
+  mixed_port?: number
+  lan_ip?: string
+  proxy_address?: string
+  pac_url?: string
+  subscriptions: number
+  traffic?: ProxyTraffic
+  /** What the PROXY group points at ("AUTO", "DIRECT" or a node). */
+  group_choice?: string
+  /** The node AUTO currently picks, when PROXY → AUTO. */
+  auto_choice?: string
+  restarts: number
+  last_error?: string
+  notice?: string
+}
+
+export interface ProxyUsage {
+  upload?: number
+  download?: number
+  total?: number
+  /** Unix seconds; 0/absent = no expiry. */
+  expire?: number
+}
+
+export interface ProxySubscription {
+  id: string
+  name: string
+  url_masked: string
+  enabled: boolean
+  interval_hours: number
+  node_count?: number
+  updated_at?: string
+  usage?: ProxyUsage
+  error?: string
+}
+
+export interface ProxySubscriptions {
+  subscriptions: ProxySubscription[]
+  /** False when mihomo is stopped: node counts and usage are then unknown. */
+  running: boolean
+}
+
+export interface ProxyGroup {
+  name: string
+  type?: string
+  now?: string
+  all: string[]
+}
+
+export interface ProxyNode {
+  name: string
+  type?: string
+  udp?: boolean
+  alive?: boolean
+  /** Last measured delay in ms; 0 = the last test timed out. */
+  delay?: number
+  subscription_id: string
+  subscription: string
+}
+
+export interface ProxyGroups {
+  running: boolean
+  groups: ProxyGroup[]
+  nodes: ProxyNode[]
+}

@@ -1325,6 +1325,217 @@ def csv_download(name, text):
     return handler
 
 
+# ── Proxy (mihomo) ───────────────────────────────────────────────────────────
+
+PROXY_NODES = {
+    "a1b2c3d4": ["🇭🇰 Hong Kong 01", "🇭🇰 Hong Kong 02", "🇯🇵 Tokyo 01", "🇸🇬 Singapore 01", "🇺🇸 Los Angeles 01"],
+    "e5f6a7b8": ["🇹🇼 Taipei 01", "🇯🇵 Osaka 02"],
+}
+
+
+def proxy_defaults():
+    now = int(time.time())
+    return {
+        "enabled": True,
+        "running": True,
+        "mode": "rule",
+        "preset": "bypass_cn",
+        "tun": False,
+        "mixed_port": 7890,
+        "now": "AUTO",
+        "started": now - 3 * 3600 - 420,
+        "subs": [
+            {"id": "a1b2c3d4", "name": "Main", "url_masked": "https://sub.example.com/…", "enabled": True,
+             "interval_hours": 24, "updated": now - 1800,
+             "usage": {"upload": 2_100_000_000, "download": 38_400_000_000, "total": 200_000_000_000,
+                       "expire": now + 41 * 86400}},
+            {"id": "e5f6a7b8", "name": "Backup", "url_masked": "https://backup.example.net/…", "enabled": True,
+             "interval_hours": 168, "updated": now - 5 * 86400,
+             "usage": {"upload": 0, "download": 47_000_000_000, "total": 50_000_000_000, "expire": now + 4 * 86400}},
+        ],
+        "delays": {name: (60 + i * 47) % 420 for i, name in enumerate(n for ns in PROXY_NODES.values() for n in ns)},
+    }
+
+
+def _proxy():
+    return STATE["proxy"]
+
+
+def proxy_status():
+    p = _proxy()
+    running = p["running"]
+    auto = min((n for n, d in p["delays"].items() if d), key=lambda n: p["delays"][n], default=None)
+    return {
+        "installed": True, "version": "v1.19.32", "running": running,
+        "pid": 4321 if running else None,
+        "uptime_secs": int(time.time()) - p["started"] if running else None,
+        "rss_bytes": int(jitter(48_000_000, 0.05)) if running else None,
+        "enabled": p["enabled"], "mode": p["mode"], "preset": p["preset"], "tun": p["tun"],
+        "tun_active": p["tun"] and running, "mixed_port": p["mixed_port"], "lan_ip": "192.168.0.1",
+        "proxy_address": f"192.168.0.1:{p['mixed_port']}", "pac_url": "http://192.168.0.1:9090/proxy.pac",
+        "subscriptions": len(p["subs"]),
+        "traffic": {"up_total": 182_000_000, "down_total": 4_310_000_000,
+                    "up_rate": int(jitter(42_000)), "down_rate": int(jitter(1_850_000)), "connections": 37}
+        if running else None,
+        "selected": {"group_choice": p["now"], "auto_choice": auto if p["now"] == "AUTO" else None}
+        if running else None,
+        "restarts": 0, "last_error": None, "notice": None,
+    }
+
+
+def put_proxy_settings(body):
+    obj = need_object(body, None)
+    p = _proxy()
+    for key, value in obj.items():
+        if key == "mode" and value in ("rule", "global", "direct"):
+            p["mode"] = value
+        elif key == "preset" and value in ("bypass_cn", "gfw", "proxy_all"):
+            p["preset"] = value
+        elif key == "tun" and isinstance(value, bool):
+            p["tun"] = value
+        elif key == "mixed_port" and _is_int(value) and 1024 <= value <= 65535 and value not in (2222, 8080, 9090, 9097):
+            p["mixed_port"] = value
+        else:
+            raise ApiError(400, f"invalid setting '{key}'")
+    return proxy_status()
+
+
+def post_proxy_service(body):
+    action = need_object(body, None).get("action")
+    p = _proxy()
+    if action == "start":
+        p.update(enabled=True, running=True, started=int(time.time()))
+    elif action == "stop":
+        p.update(enabled=False, running=False)
+    elif action == "restart":
+        if not p["enabled"]:
+            raise ApiError(409, "mihomo is not enabled; start it first")
+        p["started"] = int(time.time())
+    else:
+        raise ApiError(400, "action must be start, stop or restart")
+    return proxy_status()
+
+
+def proxy_subscriptions():
+    p = _proxy()
+    out = []
+    for sub in p["subs"]:
+        on = p["running"] and sub["enabled"]
+        out.append({
+            "id": sub["id"], "name": sub["name"], "url_masked": sub["url_masked"], "enabled": sub["enabled"],
+            "interval_hours": sub["interval_hours"],
+            "node_count": len(PROXY_NODES.get(sub["id"], [])) if on else None,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(sub["updated"])) if on and sub["updated"] else None,
+            "usage": sub["usage"] if on else None,
+            "error": sub.get("error"),
+        })
+    return {"subscriptions": out, "running": p["running"]}
+
+
+def _find_sub(sub_id):
+    if not isinstance(sub_id, str) or not sub_id:
+        raise ApiError(400, "id is required")
+    for sub in _proxy()["subs"]:
+        if sub["id"] == sub_id:
+            return sub
+    raise ApiError(404, "subscription not found")
+
+
+def _check_url(url):
+    if not isinstance(url, str) or not url.strip().startswith(("http://", "https://")):
+        raise ApiError(400, "subscription URL must start with http:// or https://")
+    host = url.strip().split("://", 1)[1].split("/", 1)[0].split("?", 1)[0]
+    return f"{url.strip().split('://', 1)[0]}://{host}/…"
+
+
+def post_proxy_subscription_add(body):
+    obj = need_object(body, None)
+    name = obj.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 32:
+        raise ApiError(400, "name is required")
+    masked = _check_url(obj.get("url"))
+    sub_id = "%08x" % (len(_proxy()["subs"]) * 7919 + 0x10000000)
+    _proxy()["subs"].append({"id": sub_id, "name": name.strip(), "url_masked": masked, "enabled": True,
+                             "interval_hours": obj.get("interval_hours", 24), "updated": None, "usage": None,
+                             "error": "Not fetched in demo mode"})
+    return {"id": sub_id}
+
+
+def put_proxy_subscription_edit(body):
+    obj = need_object(body, None)
+    sub = _find_sub(obj.get("id"))
+    if "name" in obj:
+        sub["name"] = str(obj["name"]).strip()
+    if obj.get("url"):
+        sub["url_masked"] = _check_url(obj["url"])
+    if isinstance(obj.get("enabled"), bool):
+        sub["enabled"] = obj["enabled"]
+    if _is_int(obj.get("interval_hours")):
+        sub["interval_hours"] = obj["interval_hours"]
+    return {}
+
+
+def post_proxy_subscription_delete(body):
+    sub = _find_sub(need_object(body, None).get("id"))
+    _proxy()["subs"].remove(sub)
+    return {}
+
+
+def post_proxy_subscription_update(body):
+    obj = need_object(body, None)
+    p = _proxy()
+    if not p["running"]:
+        raise ApiError(409, "start the proxy before updating subscriptions")
+    targets = [_find_sub(obj["id"])] if "id" in obj else [s for s in p["subs"] if s["enabled"]]
+    results = {}
+    for sub in targets:
+        if sub["id"] in PROXY_NODES:
+            sub["updated"] = int(time.time())
+            sub.pop("error", None)
+            results[sub["id"]] = {"ok": True}
+        else:
+            results[sub["id"]] = {"ok": False, "error": sub.get("error", "fetch failed")}
+    return {"results": results}
+
+
+def proxy_groups():
+    p = _proxy()
+    if not p["running"]:
+        return {"running": False, "groups": [], "nodes": []}
+    subs = {s["id"]: s["name"] for s in p["subs"] if s["enabled"]}
+    nodes = [
+        {"name": n, "type": "Trojan" if i % 2 else "Shadowsocks", "udp": True, "alive": p["delays"].get(n, 0) > 0,
+         "delay": p["delays"].get(n), "subscription_id": sid, "subscription": subs[sid]}
+        for sid in subs for i, n in enumerate(PROXY_NODES.get(sid, []))
+    ]
+    names = [n["name"] for n in nodes]
+    auto = min((n for n in names if p["delays"].get(n)), key=lambda n: p["delays"][n], default="DIRECT")
+    groups = [{"name": "PROXY", "type": "Selector", "now": p["now"], "all": ["AUTO", "DIRECT", *names]}]
+    if names:
+        groups.append({"name": "AUTO", "type": "URLTest", "now": auto, "all": names})
+    return {"running": True, "groups": groups, "nodes": nodes}
+
+
+def put_proxy_select(body):
+    obj = need_object(body, None)
+    if obj.get("group") != "PROXY":
+        raise ApiError(400, "only the PROXY group can be selected manually")
+    choice = obj.get("proxy")
+    if choice not in proxy_groups()["groups"][0]["all"]:
+        raise ApiError(400, "unknown proxy")
+    _proxy()["now"] = choice
+    return {"now": choice}
+
+
+def post_proxy_delay(body):
+    p = _proxy()
+    if not p["running"]:
+        raise ApiError(409, "the proxy is not running")
+    for name in p["delays"]:
+        p["delays"][name] = 0 if name.endswith("02") and random.random() < 0.5 else int(jitter(p["delays"][name] or 180, 0.3))
+    return {"delays": dict(p["delays"])}
+
+
 # ── Mutable demo state ────────────────────────────────────────────────────────
 
 STATE = {}
@@ -1346,6 +1557,7 @@ def initial_state(scenario):
         "apn": apn_defaults(),
         "sms": sms_defaults(),
         "loggers": logger_defaults(),
+        "proxy": proxy_defaults(),
     }
 
 
@@ -1372,6 +1584,9 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/proxy/settings": put_proxy_settings,
+    "/api/proxy/subscriptions": put_proxy_subscription_edit,
+    "/api/proxy/groups": put_proxy_select,
     "/api/device/charge-control": put_charge_control,
     "/api/wifi/settings": put_wifi_settings,
     "/api/data-usage/reset-day": put_reset_day,
@@ -1387,6 +1602,9 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/proxy/status": proxy_status,
+    "/api/proxy/subscriptions": proxy_subscriptions,
+    "/api/proxy/groups": proxy_groups,
     "/api/dashboard": dashboard_batch,
     "/api/network/clients": clients,
     "/api/device": lambda: dashboard_batch()["device"],
@@ -1425,6 +1643,11 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/proxy/service": post_proxy_service,
+    "/api/proxy/subscriptions": post_proxy_subscription_add,
+    "/api/proxy/subscriptions/delete": post_proxy_subscription_delete,
+    "/api/proxy/subscriptions/update": post_proxy_subscription_update,
+    "/api/proxy/delay": post_proxy_delay,
     "/api/auth/login": post_login,
     "/api/sms/list": post_sms_list,
     "/api/sms/send": post_sms_send,
@@ -1452,7 +1675,9 @@ ROUTES_POST = {
 }
 
 # agent/src/server.rs::DESTRUCTIVE_PATHS: rejected without `X-Confirm: true`.
-DESTRUCTIVE_PATHS = ("/api/device/reboot", "/api/device/shutdown", "/api/system/kill-bloat")
+DESTRUCTIVE_PATHS = (
+    "/api/device/reboot", "/api/device/shutdown", "/api/system/kill-bloat", "/api/proxy/subscriptions/delete",
+)
 # POSTs that only read; not recorded as mutations.
 READ_ONLY_POSTS = ("/api/sms/list", "/api/auth/login")
 

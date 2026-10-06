@@ -1,4 +1,10 @@
-# MU5250-OpenUI
+# U60-Pro-WebUI
+
+> Fork of [dklasens/MU5250-OpenUI](https://github.com/dklasens/MU5250-OpenUI)
+> that adds a **mihomo proxy manager** (subscriptions, node selection, rule
+> presets, PAC, optional LAN-wide transparent proxy via TUN) and is working
+> towards controlling as much of the device as the firmware allows. Verified on
+> CN firmware `BD_CNMU5250V1.0.0B31`.
 
 A custom control plane for the ZTE U60 Pro (MU5250) 5G modem: a Rust agent
 running on the device exposes a JSON API (`http://192.168.0.1:9090`), and a
@@ -58,6 +64,7 @@ Browser ── HTTP/JSON ──► React dashboard (:8080, isolated uhttpd, /dat
 | **Signal** | per-carrier LTE/NR detail (PCI, ARFCN, RSRP/RSRQ/SINR), matching UL and Active/Idle indicators on desktop and mobile when reported, network mode, band lock, one-tap cell lock from live cells |
 | **Network** | clients by Wi-Fi/USB-C/Ethernet with link details, validated per-band Wi-Fi updates with rollback on observed failures, LAN/DHCP changes with reconnection confirmation and automatic rollback, DNS |
 | **Modem** | manual APN profiles, data usage + reset day, TTL clamping, SMS (inbox/sent, compose, delete) |
+| **Proxy** | mihomo service control with live throughput, subscription management (add/edit/update, usage and expiry from the provider), node list with latency tests and one-tap switching, Rule/Global/Direct modes, routing presets (bypass mainland China / GFW list / proxy everything), PAC + manual proxy setup for devices, optional transparent proxy (TUN) for the whole LAN with a self-healing watchdog |
 | **System** | thermals, battery health, reconciled charge control (stop/resume + limit enforcer), signal/connection loggers with CSV export, read-only AT console, on-demand process list, device/SIM info, guarded USB mode + powerbank transitions, power actions |
 
 v2.3 also refreshes the home/login and Signal icons and browser favicon. The
@@ -125,6 +132,7 @@ python3 scripts/zunlock.py     # 1. unlock → adbd (config backup/restore route
 bash setup.sh                  # 2. download or build, then install the agent
 bash scripts/zharden.sh        # 3. SSH, rc.local cleanup, dashboard :8080, FOTA off
 bash deploy-dashboard.sh       # 4. build + push the web UI
+bash scripts/deploy-mihomo.sh  # 5. (optional) install the mihomo core for the Proxy page
 ```
 
 Full instructions, requirements (backup-key suffix), updates and post-FOTA
@@ -143,6 +151,7 @@ docs/           documentation (below)
 setup.sh        first-time provisioning (unlock + agent install)
 deploy.sh       agent updates over SSH
 deploy-dashboard.sh   dashboard build + push
+scripts/deploy-mihomo.sh  mihomo core + geodata install/update (verified)
 zte-script-ng.js      community-vetted reference of safe ubus calls
 ```
 

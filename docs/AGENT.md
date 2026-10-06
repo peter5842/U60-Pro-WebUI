@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 58 paths / 63 method+path pairs.
+(plus that the mock agent stays in step). 66 paths / 74 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -38,6 +38,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |
 | Power | `GET+PUT /api/device/charge-control` — manual stop/resume + limit enforcer with hysteresis, event-driven off `BSP_CHARGER_EVENT` |
 | Extras | TTL clamping (`GET /api/ttl/status`, `PUT /api/ttl/set`, `DELETE /api/ttl/clear`), AT console (`POST /api/at/send`, `GET /api/at/port`), signal/connection CSV loggers (`/api/logger/*`) |
+| Proxy (mihomo) | `GET /api/proxy/status`; `PUT /api/proxy/settings` (mode, preset, tun, mixed_port); `POST /api/proxy/service` (start/stop/restart); `GET`/`POST`/`PUT /api/proxy/subscriptions`, `POST /api/proxy/subscriptions/delete` (X-Confirm), `POST /api/proxy/subscriptions/update`; `GET`/`PUT /api/proxy/groups`; `POST /api/proxy/delay`. Plus unauthenticated `GET /proxy.pac` for LAN devices |
 
 ## Architecture notes
 
@@ -88,6 +89,37 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 - **LAN-only bind + LAN-origin CORS** by default.
 - ubus inputs passed through from HTTP are size/depth-validated
   (`validate.rs`) before forwarding.
+
+## Proxy (mihomo)
+
+`agent/src/mihomo/` manages a [mihomo](https://github.com/MetaCubeX/mihomo)
+core installed in `/data/mihomo` by `scripts/deploy-mihomo.sh` (pinned
+release, GitHub SHA-256 verified on both ends).
+
+- **State**: `/data/mihomo/manager.json` (0600) holds settings, subscriptions
+  and the controller secret. The API returns subscription links masked
+  (`https://host/…`); full links never leave the router.
+- **Config**: rendered as JSON from typed state (`config.rs`), validated with
+  `mihomo -t`, atomically renamed into `config.yaml`, then hot-reloaded via the
+  controller. A failed reload restores the previous file and state.
+  Subscriptions are fetched `DIRECT` so they never depend on their own nodes.
+- **Controller**: `127.0.0.1:9097` only; the dashboard reaches it through the
+  agent's authenticated routes, never directly.
+- **Listener**: the mixed HTTP/SOCKS port binds the LAN address only.
+- **Process**: started in its own session so agent restarts do not stop it;
+  a new agent re-adopts it from `/var/run/mihomo.pid`. The watchdog (5 s tick)
+  restarts it with exponential backoff (max 5 min), and turns TUN off after 3
+  crashes in 10 minutes.
+- **TUN** (`settings.tun`): device `mihomo`, `include-interface: br-lan` only,
+  so the router's own traffic never enters it; DNS is left to dnsmasq and
+  domains come from the TLS/HTTP/QUIC sniffer. ZTE's fw3 rejects LAN→tun
+  forwarding and tun INPUT, so while TUN runs the agent inserts tagged
+  (`mihomo-tun`) iptables/ip6tables accepts at the top of FORWARD and INPUT,
+  re-asserts them every 15 s (fw3/QCMAP reloads flush them), and removes them on
+  stop. A force-killed mihomo's ip rules (prefs 9000–9099, table 2022) are
+  cleaned up. Nothing is persisted: a reboot restores the stock route.
+- **Device test**: `mihomo::device_tests::device_e2e` (ignored) exercises start,
+  TUN, hot reload, kill-and-restart and firewall re-assertion on real hardware.
 
 ## USB modes
 

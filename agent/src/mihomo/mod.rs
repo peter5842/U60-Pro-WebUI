@@ -635,6 +635,9 @@ impl Manager {
             Err(e) => return e,
         };
         let id = v["id"].as_str().unwrap_or("");
+        if id.is_empty() {
+            return bad("id is required");
+        }
         let mut inner = self.lock();
         let Some(idx) = inner.find_sub(id) else {
             return (404, json!({"ok": false, "error": "subscription not found"}));
@@ -693,6 +696,9 @@ impl Manager {
             Err(e) => return e,
         };
         let id = v["id"].as_str().unwrap_or("").to_string();
+        if id.is_empty() {
+            return bad("id is required");
+        }
         let mut inner = self.lock();
         let Some(idx) = inner.find_sub(&id) else {
             return (404, json!({"ok": false, "error": "subscription not found"}));

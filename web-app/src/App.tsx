@@ -11,6 +11,7 @@ const HomePage = lazy(() => import('./features/home/HomePage'))
 const SignalGroup = lazy(() => import('./features/signal/SignalGroup'))
 const NetworkGroup = lazy(() => import('./features/network/NetworkGroup'))
 const ModemGroup = lazy(() => import('./features/modem/ModemGroup'))
+const ProxyGroup = lazy(() => import('./features/proxy/ProxyGroup'))
 const SystemGroup = lazy(() => import('./features/system/SystemGroup'))
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
           {group === 'signal' && <SignalGroup />}
           {group === 'network' && <NetworkGroup />}
           {group === 'modem' && <ModemGroup />}
+          {group === 'proxy' && <ProxyGroup />}
           {group === 'system' && (
             <SystemGroup
               onLogout={() => {

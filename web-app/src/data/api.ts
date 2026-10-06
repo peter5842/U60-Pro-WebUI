@@ -9,6 +9,7 @@
 import { get, post, put, readCsv, req } from './client'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
+import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
 import { boolLike, finiteNumber, intInRange, isObj, nonEmptyStr, nonNegative, nonNegativeInt, obj, str, strList, arr } from './validate'
 import { widthMhz } from './wifiWidth'
 import type {
@@ -31,6 +32,8 @@ import type {
   MemInfo,
   ModemCapabilities,
   PrimaryCarrier,
+  ProxyMode,
+  ProxyPreset,
   ProcessListResult,
   SignalInfo,
   SimInfo,
@@ -1013,4 +1016,24 @@ export const api = {
   cellLockLte: (pci: string, earfcn: string) =>
     post('/api/cell/lock/lte', { lock_lte_pci: pci, lock_lte_earfcn: earfcn }),
   cellLockReset: () => post('/api/cell/lock/reset'),
+
+  // Proxy (mihomo). Changes re-validate the config and may restart mihomo,
+  // and subscription updates fetch from the network: allow longer timeouts.
+  proxyStatus: () => get('/api/proxy/status').then(mapProxyStatus),
+  proxySettings: (body: { mode?: ProxyMode; preset?: ProxyPreset; tun?: boolean; mixed_port?: number }) =>
+    req('PUT', '/api/proxy/settings', body, undefined, 45_000).then(mapProxyStatus),
+  proxyService: (action: 'start' | 'stop' | 'restart') =>
+    req('POST', '/api/proxy/service', { action }, undefined, 45_000).then(mapProxyStatus),
+  proxySubscriptions: () => get('/api/proxy/subscriptions').then(mapProxySubscriptions),
+  proxySubscriptionAdd: (body: { name: string; url: string; interval_hours: number }) =>
+    req('POST', '/api/proxy/subscriptions', body, undefined, 45_000),
+  proxySubscriptionEdit: (body: { id: string; name?: string; url?: string; enabled?: boolean; interval_hours?: number }) =>
+    req('PUT', '/api/proxy/subscriptions', body, undefined, 45_000),
+  proxySubscriptionDelete: (id: string) =>
+    req('POST', '/api/proxy/subscriptions/delete', { id }, { 'X-Confirm': 'true' }, 45_000),
+  proxySubscriptionUpdate: (id?: string) =>
+    req('POST', '/api/proxy/subscriptions/update', id ? { id } : {}, undefined, 180_000),
+  proxyGroups: () => get('/api/proxy/groups').then(mapProxyGroups),
+  proxySelect: (proxy: string) => put('/api/proxy/groups', { group: 'PROXY', proxy }),
+  proxyDelay: () => req('POST', '/api/proxy/delay', {}, undefined, 30_000).then(mapProxyDelays),
 }

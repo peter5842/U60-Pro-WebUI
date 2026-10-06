@@ -42,6 +42,9 @@ MOCK_PAYLOAD_POSTS = {
     ("POST", "/api/sms/list"),
     ("POST", "/api/at/send"),
     ("POST", "/api/system/kill-bloat"),
+    ("POST", "/api/proxy/service"),
+    ("POST", "/api/proxy/subscriptions/update"),
+    ("POST", "/api/proxy/delay"),
 }
 
 AGENT_ROUTE_RE = re.compile(r'\(&Method::(\w+),\s*"(/api/[^"]+)"\)')
