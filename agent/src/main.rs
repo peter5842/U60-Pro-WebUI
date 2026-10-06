@@ -4,6 +4,7 @@ mod auth;
 mod cache;
 mod cell;
 mod charge_policy;
+mod client_traffic;
 mod clients;
 mod connection_logger;
 mod csv_utils;
@@ -14,6 +15,7 @@ mod handlers;
 mod lan;
 mod logging;
 mod mihomo;
+mod netselect;
 mod netsvc;
 mod network_ext;
 mod process;
@@ -23,6 +25,7 @@ mod server;
 mod signal_logger;
 mod sim;
 mod sms;
+mod sms_forward;
 mod storage;
 mod system;
 mod ubus;
@@ -82,6 +85,8 @@ fn main() {
 
     state.charge_limit.start(charger_rx);
     state.mihomo.start_watchdog();
+    sms_forward::start(Arc::clone(&state));
+    client_traffic::start();
 
     // Apply persisted TTL settings if they exist
     let _ = std::process::Command::new("sh")

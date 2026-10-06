@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 80 paths / 100 method+path pairs.
+(plus that the mock agent stays in step). 88 paths / 109 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -34,6 +34,9 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Cell/band lock | `POST /api/cell/lock/nr`, `/api/cell/lock/lte`, `/api/cell/lock/reset`, `/api/cell/band/nr`, `/api/cell/band/lte`, `/api/cell/band/reset` |
 | Router | `GET+PUT /api/router/dns`, `/api/router/lan`, `/api/router/apn/mode`; `GET+POST+PUT /api/router/apn/profiles` (PUT edits a profile in place with the stock `modify_manu_apn`, carrying over `isEnable`/`cid`/`roamingPdpType` from the current entry); `POST /api/router/apn/profiles/delete`, `/api/router/apn/profiles/activate` |
 | Network services | `GET+PUT /api/router/watchdog` (stock connection watchdog; enabling waits 10 s because the firmware turns it back off when it cannot ping the address → 409); `GET+PUT /api/router/firewall` (UPnP, DMZ host, remote management, WAN ping); `GET+POST+PUT /api/router/port-forwards`, `POST /api/router/port-forwards/delete` (port forwarding = a range to the same ports, port mapping = one port to another; max 20 each, overlapping external ports rejected; rules read from uci `firewall` redirects); `GET+POST+PUT /api/router/dhcp-bindings`, `POST /api/router/dhcp-bindings/delete` (MAC-IP binding, max 10, applied by the firmware after a reboot); `GET /api/system/time` (clock status, read only) |
+| Cellular | `GET /api/cell/operators`, `POST /api/cell/operators/scan`, `/api/cell/operators/select` (`{mccmnc, rat}`), `/api/cell/operators/auto` — manual carrier selection through the stock `nwinfo_manual_scan` / `nwinfo_manual_register` flow (the dashboard polls GET); back to automatic re-applies the network mode and waits for `net_select_mode` |
+| SMS forwarding | `GET+PUT /api/sms/forward`, `POST /api/sms/forward/test` — a background thread polls the newest messages every 20 s and pushes received ones above `last_id` to Bark, Server酱, a WeCom group bot, Telegram (optionally through the local mihomo proxy) or a JSON webhook. History is not sent; the key/URL is kept 0600 in `/data/local/tmp/sms_forward.json` and never returned |
+| Client traffic | `GET /api/network/clients/traffic`, `POST /api/network/clients/traffic/reset` — per-device internet bytes from conntrack accounting (IPA offload syncs its counts back), sampled every 10 s by client MAC, saved every 5 min to `/data/local/tmp/client_traffic.json` |
 | SMS | `POST /api/sms/list`, `/api/sms/send`, `/api/sms/delete`, `/api/sms/read` (delete falls back to direct SQLite for SIM-stored rows the firmware refuses) |
 | SIM | `GET /api/sim/info`, `/api/sim/imei` |
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |

@@ -1431,6 +1431,102 @@ def csv_download(name, text):
     return handler
 
 
+# ── Carrier selection, SMS forwarding, per-device traffic ────────────────────
+
+def carriers():
+    c = STATE["cellular"]
+    return {"select_mode": c["select_mode"], "network_mode": "Only_5G",
+            "current": {"name": c["current"], "mcc": "460", "mnc": "0"},
+            "scan": c["scan"], "networks": c["networks"] if c["scan"] == "done" else [], "register": c["register"]}
+
+
+def post_carrier_scan(body):
+    c = STATE["cellular"]
+    c.update(scan="done", networks=[
+        {"state": "current", "name": "CHINA MOBILE", "mccmnc": "46000", "rat": "12", "rat_label": "5G"},
+        {"state": "available", "name": "CHN-UNICOM", "mccmnc": "46001", "rat": "7", "rat_label": "4G"},
+        {"state": "forbidden", "name": "CHN-CT", "mccmnc": "46011", "rat": "7", "rat_label": "4G"},
+    ])
+    return carriers()
+
+
+def post_carrier_select(body):
+    obj = need_object(body, None)
+    mccmnc, rat = obj.get("mccmnc"), obj.get("rat")
+    if not (isinstance(mccmnc, str) and re.match(r"^\d{5,6}$", mccmnc)):
+        raise ApiError(400, "mccmnc must be 5 or 6 digits")
+    if rat not in ("0", "2", "7", "9", "11", "12", "13", "14"):
+        raise ApiError(400, "rat is not a known access technology")
+    c = STATE["cellular"]
+    match = next((n for n in c["networks"] if n["mccmnc"] == mccmnc), None)
+    c.update(select_mode="manual", register="success", current=match["name"] if match else mccmnc)
+    return carriers()
+
+
+def post_carrier_auto(body):
+    STATE["cellular"].update(select_mode="auto", register="idle", current="China Mobile")
+    return carriers()
+
+
+SMS_CHANNELS = ("bark", "serverchan", "wecom", "telegram", "webhook")
+
+
+def sms_forward():
+    f = STATE["sms_forward"]
+    configured = bool(f["target"]) and (f["channel"] != "telegram" or bool(f["chat_id"]))
+    hint = None
+    if f["target"]:
+        hint = f["target"].split("//", 1)[1].split("/", 1)[0] + "/…" if "://" in f["target"] else f["target"][:4] + "…"
+    return {"enabled": f["enabled"], "channel": f["channel"], "configured": configured, "target_hint": hint,
+            "chat_id": f["chat_id"] or None, "via_proxy": f["via_proxy"], "forwarded": f["forwarded"],
+            "last_sent": f["last_sent"], "last_error": None}
+
+
+def put_sms_forward(body):
+    obj = need_object(body, None)
+    f = STATE["sms_forward"]
+    for key, value in obj.items():
+        if key == "channel":
+            if value not in SMS_CHANNELS:
+                raise ApiError(400, "channel must be bark, serverchan, wecom, telegram or webhook")
+        elif key in ("target", "chat_id"):
+            if not isinstance(value, str):
+                raise ApiError(400, f"{key} must be a string")
+            value = value.strip()
+        elif key in ("enabled", "via_proxy"):
+            if not isinstance(value, bool):
+                raise ApiError(400, f"{key} must be a boolean")
+        else:
+            raise ApiError(400, f"unknown field {key}")
+        f[key] = value
+    if f["enabled"] and not f["target"]:
+        f["enabled"] = False
+        raise ApiError(400, "enter the key, or the full https:// URL")
+    if f["channel"] in ("wecom", "webhook") and f["target"] and not f["target"].startswith(("https://", "http://")):
+        raise ApiError(400, "enter the full https:// URL")
+    return sms_forward()
+
+
+def post_sms_forward_test(body):
+    if not STATE["sms_forward"]["target"]:
+        raise ApiError(400, "enter the key, or the full https:// URL")
+    return {"sent": True}
+
+
+def client_traffic():
+    ct = STATE["client_traffic"]
+    return {"since": ct["since"], "sampled_secs_ago": 4, "clients": [
+        {"mac": m, "ip": ip, "up_bytes": up, "down_bytes": down, "up_rate": int(jitter(rate // 20)), "down_rate": int(jitter(rate))}
+        for m, ip, up, down, rate in ct["clients"]]}
+
+
+def post_client_traffic_reset(body):
+    ct = STATE["client_traffic"]
+    ct["since"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    ct["clients"] = [(m, ip, 0, 0, rate) for m, ip, _, _, rate in ct["clients"]]
+    return client_traffic()
+
+
 # ── Router network services (netsvc.rs) ──────────────────────────────────────
 
 LAN_PREFIX = "192.168.0."
@@ -1983,6 +2079,13 @@ def initial_state(scenario):
         "power": {"sleep": -1, "reboot": {"enabled": False, "mode": "weekly", "weekday": 2, "interval_days": 1,
                                          "hour": 2, "minute": 0, "window_hours": 2}},
         "client_ctl": {"names": {}, "blocked": set()},
+        "cellular": {"select_mode": "auto", "current": "China Mobile", "scan": "idle", "networks": [], "register": "idle"},
+        "sms_forward": {"enabled": False, "channel": "bark", "target": "", "chat_id": "", "via_proxy": False,
+                        "forwarded": 0, "last_sent": None},
+        "client_traffic": {"since": "2026-10-01 09:00:00", "clients": [
+            ("00:00:5E:00:53:01", "192.168.0.101", 182_000_000, 3_910_000_000, 1_400_000),
+            ("00:00:5E:00:53:02", "192.168.0.102", 41_000_000, 820_000_000, 230_000),
+            ("00:00:5E:00:53:04", "192.168.0.104", 12_000_000, 96_000_000, 0)]},
         "netsvc": {"watchdog": {"enabled": False, "host": None, "interval_minutes": 2, "failures": 3},
                    "firewall": {"upnp": True, "dmz_enabled": False, "dmz_ip": None, "remote_web_access": False,
                                 "wan_ping": False},
@@ -2015,6 +2118,7 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/sms/forward": put_sms_forward,
     "/api/router/watchdog": put_watchdog,
     "/api/router/firewall": put_firewall_services,
     "/api/router/port-forwards": put_port_rules,
@@ -2044,6 +2148,9 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/cell/operators": carriers,
+    "/api/sms/forward": sms_forward,
+    "/api/network/clients/traffic": client_traffic,
     "/api/router/watchdog": watchdog,
     "/api/router/firewall": firewall_services,
     "/api/router/port-forwards": port_rules,
@@ -2095,6 +2202,11 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/cell/operators/scan": post_carrier_scan,
+    "/api/cell/operators/select": post_carrier_select,
+    "/api/cell/operators/auto": post_carrier_auto,
+    "/api/sms/forward/test": post_sms_forward_test,
+    "/api/network/clients/traffic/reset": post_client_traffic_reset,
     "/api/router/port-forwards": post_port_rule,
     "/api/router/port-forwards/delete": post_port_rule_delete,
     "/api/router/dhcp-bindings": post_dhcp_binding,

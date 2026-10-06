@@ -873,6 +873,19 @@ fn main_route(proxies: &Value) -> Value {
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 impl Manager {
+    /// `http://<lan ip>:<mixed port>` while mihomo runs, for the agent's own
+    /// outbound requests that need the proxy (e.g. Telegram for SMS forwarding).
+    pub fn local_proxy(&self) -> Option<String> {
+        let port = {
+            let mut inner = self.lock();
+            if !inner.alive() {
+                return None;
+            }
+            inner.state.settings.mixed_port
+        };
+        lan_ip().ok().map(|ip| format!("http://{ip}:{port}"))
+    }
+
     /// GET /api/proxy/status
     pub fn status(&self) -> (u16, Value) {
         let mut inner = self.lock();

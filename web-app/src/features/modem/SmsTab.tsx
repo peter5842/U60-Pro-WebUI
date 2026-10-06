@@ -8,6 +8,7 @@ import { Button, Field, Input, Segmented } from '../../ui/controls'
 import { toast, toastError, confirm } from '../../ui/feedback'
 import { Card, Empty, InlineStatus, Skeleton } from '../../ui/primitives'
 import { findMessage, inBox, markRead, reconcileSelection, removeMessage, restoreUnread, unreadCount, type Box } from './smsCollection'
+import SmsForwardCard from './SmsForwardCard'
 
 type SmsList = { messages: SmsMessage[]; dropped: number }
 
@@ -148,6 +149,7 @@ export default function SmsTab() {
 
   return (
     <div className="space-y-3">
+      <SmsForwardCard />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented<Box>
           label={t('Message box')}

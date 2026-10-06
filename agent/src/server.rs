@@ -8,10 +8,12 @@ use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::at_cmd;
 use crate::cell;
+use crate::client_traffic;
 use crate::clients;
 use crate::connection_logger;
 use crate::device_ext;
 use crate::handlers::{self, AppState};
+use crate::netselect;
 use crate::netsvc;
 use crate::network_ext;
 use crate::router;
@@ -19,6 +21,7 @@ use crate::schedule;
 use crate::signal_logger;
 use crate::sim;
 use crate::sms;
+use crate::sms_forward;
 use crate::usb;
 use crate::wifi;
 use crate::wwan;
@@ -368,6 +371,15 @@ pub fn route(
         (&Method::Put, "/api/router/dhcp-bindings") => netsvc::bindings_switch(state, body),
         (&Method::Post, "/api/router/dhcp-bindings/delete") => netsvc::binding_delete(state, body),
         (&Method::Get, "/api/system/time") => netsvc::time_get(state),
+        (&Method::Get, "/api/network/clients/traffic") => client_traffic::get(state),
+        (&Method::Post, "/api/network/clients/traffic/reset") => client_traffic::reset(state),
+        (&Method::Get, "/api/cell/operators") => netselect::get(state),
+        (&Method::Post, "/api/cell/operators/scan") => netselect::scan(state),
+        (&Method::Post, "/api/cell/operators/select") => netselect::select(state, body),
+        (&Method::Post, "/api/cell/operators/auto") => netselect::auto(state),
+        (&Method::Get, "/api/sms/forward") => sms_forward::get(state),
+        (&Method::Put, "/api/sms/forward") => sms_forward::set(state, body),
+        (&Method::Post, "/api/sms/forward/test") => sms_forward::test(state),
         (&Method::Put, "/api/network/clients/name") => clients::name_set(state, body),
         (&Method::Post, "/api/network/clients/kick") => clients::kick_post(state, body),
         (&Method::Get, "/api/network/blocklist") => clients::blocklist_get(state),

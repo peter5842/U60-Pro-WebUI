@@ -446,6 +446,12 @@ export const dhcpBindings = (over?: Json): Json =>
 export const clock = (over?: Json): Json =>
   merge({ local_time: '2026-10-06 22:49:15', utc_offset_hours: 8, mode: 'auto', source: 'NITZ', sntp_synced: false, servers: [] }, over)
 
+export const carriers = (over?: Json): Json =>
+  merge({ select_mode: 'auto', network_mode: 'Only_5G', current: { name: 'Synthetic Mobile', mcc: '001', mnc: '01' }, scan: 'idle', networks: [], register: 'idle' }, over)
+export const smsForward = (over?: Json): Json =>
+  merge({ enabled: false, channel: 'bark', configured: false, target_hint: null, chat_id: null, via_proxy: false, forwarded: 0, last_sent: null, last_error: null }, over)
+export const clientTraffic = (over?: Json): Json => merge({ since: '2026-10-01 09:00:00', clients: [] }, over)
+
 export const apnMode = (over?: Json): Json => merge({ apn_mode: 1 }, over)
 
 export function apnProfiles(over?: { apnListArray?: Json[] }): Json {

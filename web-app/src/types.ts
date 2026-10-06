@@ -350,6 +350,10 @@ export interface SimInfo {
   state?: string
   mcc?: string
   mnc?: string
+  /** PIN lock on the SIM (stock: pin_status "1"). */
+  pin_lock?: boolean
+  pin_attempts?: number
+  puk_attempts?: number
 }
 
 /** A date with no time or zone, as the router reports it. Never a UTC instant. */
@@ -704,4 +708,50 @@ export interface ClockStatus {
   source?: string
   sntp_synced: boolean
   servers: string[]
+}
+
+export interface CarrierNetwork {
+  state: 'available' | 'current' | 'forbidden' | 'unknown'
+  name: string
+  mccmnc: string
+  rat: string
+  rat_label: string
+}
+
+export interface CarrierSelection {
+  select_mode: 'auto' | 'manual'
+  network_mode?: string
+  current: { name?: string; mcc?: string; mnc?: string }
+  scan: 'idle' | 'scanning' | 'done' | 'failed'
+  networks: CarrierNetwork[]
+  register: 'idle' | 'registering' | 'success' | 'failed'
+}
+
+export type SmsForwardChannel = 'bark' | 'serverchan' | 'wecom' | 'telegram' | 'webhook'
+
+export interface SmsForward {
+  enabled: boolean
+  channel: SmsForwardChannel
+  configured: boolean
+  /** A non-secret hint of the saved key or URL (host or first characters). */
+  target_hint?: string
+  chat_id?: string
+  via_proxy: boolean
+  forwarded: number
+  last_sent?: string
+  last_error?: string
+}
+
+export interface ClientTraffic {
+  mac: string
+  ip?: string
+  up_bytes: number
+  down_bytes: number
+  up_rate: number
+  down_rate: number
+}
+
+export interface ClientTrafficReport {
+  since?: string
+  clients: ClientTraffic[]
 }

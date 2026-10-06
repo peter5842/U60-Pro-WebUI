@@ -340,4 +340,10 @@ export const system: Record<string, string> = {
   'from the mobile network': '来自移动网络',
   'from NTP servers': '来自 NTP 服务器',
   'set by hand': '手动设置',
+
+  // SIM PIN status
+  'PIN lock': 'PIN 码锁',
+  'On · {pin} PIN / {puk} PUK attempts left': '已开启 · PIN 剩余 {pin} 次 / PUK 剩余 {puk} 次',
+  Off: '关',
+  'PIN changes are made in the stock web interface: the firmware only accepts PIN codes encrypted by its own pages.': '修改 PIN 码请使用原厂网页：固件只接受由原厂页面加密过的 PIN 码。',
 }

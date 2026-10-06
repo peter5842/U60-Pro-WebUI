@@ -10,6 +10,7 @@ import { get, post, put, readCsv, req } from './client'
 import { t } from '../i18n'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
+import { mapCarrierSelection, mapClientTraffic, mapSmsForward } from './cellular'
 import { mapBlocklist } from './clients'
 import { mapClock, mapDhcpBindings, mapFirewall, mapPortRules, mapWatchdog } from './netsvc'
 import { mapRebootSchedule, mapSleep } from './schedule'
@@ -21,6 +22,9 @@ import type {
   ApnModeState,
   ApnProfile,
   Blocklist,
+  CarrierSelection,
+  ClientTrafficReport,
+  SmsForward,
   ClockStatus,
   DhcpBindings,
   FirewallServices,
@@ -612,6 +616,9 @@ function mapSim(d: Record<string, unknown>): SimInfo {
     state: d.sim_states as string | undefined,
     mcc: d.mdm_mcc as string | undefined,
     mnc: d.mdm_mnc as string | undefined,
+    pin_lock: d.pin_status === undefined ? undefined : d.pin_status === '1' || d.pin_status === 1,
+    pin_attempts: intInRange(Number(d.pinnumber), 0, 10),
+    puk_attempts: intInRange(Number(d.puknumber), 0, 10),
   }
 }
 
@@ -985,6 +992,19 @@ export const api = {
   dhcpBindingsSwitch: (enabled: boolean): Promise<DhcpBindings> => put('/api/router/dhcp-bindings', { enabled }).then(mapDhcpBindings),
   dhcpBindingDelete: (id: string): Promise<DhcpBindings> => post('/api/router/dhcp-bindings/delete', { id }).then(mapDhcpBindings),
   clock: (): Promise<ClockStatus> => get('/api/system/time').then(mapClock),
+
+  // Carrier selection, SMS forwarding, per-device traffic
+  carriers: (): Promise<CarrierSelection> => get('/api/cell/operators').then(mapCarrierSelection),
+  carrierScan: (): Promise<CarrierSelection> => post('/api/cell/operators/scan', {}).then(mapCarrierSelection),
+  carrierSelect: (mccmnc: string, rat: string): Promise<CarrierSelection> =>
+    post('/api/cell/operators/select', { mccmnc, rat }).then(mapCarrierSelection),
+  /** The agent waits up to 8 s for the modem to report automatic selection. */
+  carrierAuto: (): Promise<CarrierSelection> => req('POST', '/api/cell/operators/auto', {}, undefined, 20_000).then(mapCarrierSelection),
+  smsForward: (): Promise<SmsForward> => get('/api/sms/forward').then(mapSmsForward),
+  smsForwardSet: (body: Record<string, unknown>): Promise<SmsForward> => put('/api/sms/forward', body).then(mapSmsForward),
+  smsForwardTest: () => req('POST', '/api/sms/forward/test', {}, undefined, 30_000),
+  clientTraffic: (): Promise<ClientTrafficReport> => get('/api/network/clients/traffic').then(mapClientTraffic),
+  clientTrafficReset: (): Promise<ClientTrafficReport> => post('/api/network/clients/traffic/reset', {}).then(mapClientTraffic),
 
   // WiFi
   wifiStatus: () => get('/api/wifi/status').then(mapWifi),

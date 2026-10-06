@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { api } from '../../data/api'
-import { useResource } from '../../data/poll'
+import { usePoll, useResource } from '../../data/poll'
+import { formatBytes, formatSpeed } from '../../format'
 import { t } from '../../i18n'
-import type { Blocklist, Client } from '../../types'
+import type { Blocklist, Client, ClientTrafficReport } from '../../types'
 import { Button, Field, Input } from '../../ui/controls'
 import { confirm, toast, toastError } from '../../ui/feedback'
 import { Card, Chip, InlineStatus, Skeleton } from '../../ui/primitives'
@@ -13,6 +14,7 @@ const mediumLabel = (c: Client) =>
 
 export default function DeviceControls({ clients, onChanged }: { clients: Client[]; onChanged: () => void }) {
   const blocklist = useResource<Blocklist>('network:blocklist', api.blocklist)
+  const traffic = usePoll<ClientTrafficReport>('network:client-traffic', api.clientTraffic, 10_000)
   const [busy, setBusy] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ mac: string; name: string; error?: string } | null>(null)
 
@@ -86,6 +88,18 @@ export default function DeviceControls({ clients, onChanged }: { clients: Client
     }
   }
 
+  const usage = new Map((traffic.data?.clients ?? []).map((c) => [c.mac.toUpperCase(), c]))
+
+  async function resetTraffic() {
+    const ok = await confirm({ title: t('Reset the traffic counters?'), body: t('Every device starts again from zero.'), confirmLabel: t('Reset'), danger: true })
+    if (!ok) return
+    try {
+      traffic.mutate(await api.clientTrafficReset())
+    } catch (e) {
+      toastError(e, t('Failed to reset the counters'))
+    }
+  }
+
   const bl = blocklist.data
   const blockedSet = new Set(bl?.blocked.map((b) => b.mac.toUpperCase()) ?? [])
   const canBlock = bl?.available === true && bl.blocked.length < bl.max
@@ -132,6 +146,12 @@ export default function DeviceControls({ clients, onChanged }: { clients: Client
                         <span className="tnum font-mono">{c.mac}</span>
                         {c.ip && <span className="tnum font-mono">{c.ip}</span>}
                       </p>
+                      {usage.get(c.mac.toUpperCase()) && (
+                        <p className="tnum font-mono text-meta text-ink2">
+                          ↓ {formatBytes(usage.get(c.mac.toUpperCase())!.down_bytes)} · ↑ {formatBytes(usage.get(c.mac.toUpperCase())!.up_bytes)}
+                          {usage.get(c.mac.toUpperCase())!.down_rate > 0 && ` · ${formatSpeed(usage.get(c.mac.toUpperCase())!.down_rate)}`}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       <Button size="sm" variant="ghost" onClick={() => setEditing({ mac: c.mac, name: label ?? '' })} disabled={busy !== null}>
@@ -160,6 +180,15 @@ export default function DeviceControls({ clients, onChanged }: { clients: Client
             )
           })}
         </ul>
+
+        {traffic.data?.since && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-meta text-ink3">
+            <span>{t('Internet traffic counted since {time}', { time: traffic.data.since })}</span>
+            <Button size="sm" variant="ghost" onClick={() => void resetTraffic()}>
+              {t('Reset counters')}
+            </Button>
+          </div>
+        )}
 
         <div className="border-t border-line/8 pt-3">
           <p className="text-body font-semibold text-ink">

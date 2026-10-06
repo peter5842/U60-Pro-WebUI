@@ -406,6 +406,19 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
           <Row label="ICCID" value={sim?.iccid ?? <Unavailable />} mono />
           <Row label="IMSI" value={sim?.imsi ?? <Unavailable />} mono />
           <Row label="MCC/MNC" value={sim?.mcc && sim?.mnc ? `${sim.mcc}/${sim.mnc}` : <Unavailable />} mono />
+          {sim?.pin_lock !== undefined && (
+            <Row
+              label={t('PIN lock')}
+              value={
+                sim.pin_lock
+                  ? t('On · {pin} PIN / {puk} PUK attempts left', { pin: sim.pin_attempts ?? '?', puk: sim.puk_attempts ?? '?' })
+                  : t('Off')
+              }
+            />
+          )}
+          {sim?.pin_lock !== undefined && (
+            <p className="mt-1 text-meta text-ink3">{t('PIN changes are made in the stock web interface: the firmware only accepts PIN codes encrypted by its own pages.')}</p>
+          )}
         </Card>
       </div>
 

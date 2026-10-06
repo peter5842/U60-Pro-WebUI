@@ -15,6 +15,7 @@ import { NetworkMode } from './locking/NetworkMode'
 import type { Ops } from './locking/ops'
 import { ServingCells } from './locking/ServingCells'
 import { useDraft } from './locking/useDraft'
+import CarrierSelection from './locking/CarrierSelection'
 
 function describeLockState(state: BandLockState): string {
   if (state.kind === 'locked') return state.bands.join(', ')
@@ -147,6 +148,8 @@ export default function Locking() {
       )}
 
       <ServingCells signal={signal} ops={ops} onLock={lockServingCell} />
+
+      <CarrierSelection />
 
       {capabilities && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

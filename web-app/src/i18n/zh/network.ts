@@ -362,4 +362,12 @@ export const network: Record<string, string> = {
   'Fixed address removed': '已删除固定地址',
   'Failed to remove the fixed address': '删除固定地址失败',
   'Fixed addresses could not be read.': '无法读取固定地址。',
+
+  // Per-device traffic
+  'Internet traffic counted since {time}': '自 {time} 起统计的上网流量',
+  'Reset counters': '清零计数',
+  'Reset the traffic counters?': '清零流量计数？',
+  'Every device starts again from zero.': '所有设备都会从零开始重新统计。',
+  Reset: '清零',
+  'Failed to reset the counters': '清零计数失败',
 }
