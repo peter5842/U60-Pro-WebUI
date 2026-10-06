@@ -587,3 +587,22 @@ export interface ProxyGroups {
   groups: ProxyGroup[]
   nodes: ProxyNode[]
 }
+
+// ── Mobile data connection and monthly limit ─────────────────────────────────
+
+export interface MobileDataState {
+  connected: boolean
+  connect_status?: string
+  auto_connect?: boolean
+  roaming_allowed?: boolean
+  ipv4?: string
+  ipv6?: string
+}
+
+export interface DataLimit {
+  enabled: boolean
+  /** `time` limits can only be set in the stock UI and are shown read-only. */
+  kind: 'data' | 'time'
+  limit_bytes?: number
+  alert_percent?: number
+}

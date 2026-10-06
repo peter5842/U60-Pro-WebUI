@@ -28,6 +28,7 @@ mod usb;
 mod util;
 mod validate;
 mod wifi;
+mod wwan;
 
 use std::sync::Arc;
 

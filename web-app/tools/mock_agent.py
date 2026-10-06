@@ -1325,6 +1325,44 @@ def csv_download(name, text):
     return handler
 
 
+# ── Mobile data and monthly limit ────────────────────────────────────────────
+
+def mobile_data():
+    m = STATE["wwan"]
+    return {"connected": m["connected"], "connect_status": "ipv4_ipv6_connected" if m["connected"] else "disconnected",
+            "auto_connect": True, "roaming_allowed": True,
+            "ipv4": "10.89.11.152" if m["connected"] else None,
+            "ipv6": "2409:896d:142:1a30::1" if m["connected"] else None}
+
+
+def put_mobile_data(body):
+    connect = need_object(body, None).get("connect")
+    if not isinstance(connect, bool):
+        raise ApiError(400, "connect must be a boolean")
+    STATE["wwan"]["connected"] = connect
+    return mobile_data()
+
+
+def data_limit():
+    lim = STATE["wwan"]["limit"]
+    return {"enabled": lim["enabled"], "kind": "data", "limit_bytes": lim["bytes"], "alert_percent": lim["alert"]}
+
+
+def put_data_limit(body):
+    obj = need_object(body, None)
+    if not isinstance(obj.get("enabled"), bool):
+        raise ApiError(400, "enabled must be a boolean")
+    lim = STATE["wwan"]["limit"]
+    if obj["enabled"]:
+        if not (_is_int(obj.get("limit_bytes")) and obj["limit_bytes"] > 0):
+            raise ApiError(400, "limit_bytes must be a positive number of bytes")
+        if not (_is_int(obj.get("alert_percent")) and 1 <= obj["alert_percent"] <= 99):
+            raise ApiError(400, "alert_percent must be 1-99")
+        lim.update(bytes=obj["limit_bytes"], alert=obj["alert_percent"])
+    lim["enabled"] = obj["enabled"]
+    return data_limit()
+
+
 # ── Proxy (mihomo) ───────────────────────────────────────────────────────────
 
 PROXY_NODES = {
@@ -1629,6 +1667,7 @@ def initial_state(scenario):
         "sms": sms_defaults(),
         "loggers": logger_defaults(),
         "proxy": proxy_defaults(),
+        "wwan": {"connected": True, "limit": {"enabled": False, "bytes": 322122547200, "alert": 80}},
     }
 
 
@@ -1655,6 +1694,8 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/modem/data": put_mobile_data,
+    "/api/data-usage/limit": put_data_limit,
     "/api/proxy/settings": put_proxy_settings,
     "/api/proxy/subscriptions": put_proxy_subscription_edit,
     "/api/proxy/groups": put_proxy_select,
@@ -1673,6 +1714,8 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/modem/data": mobile_data,
+    "/api/data-usage/limit": data_limit,
     "/api/proxy/status": proxy_status,
     "/api/proxy/subscriptions": proxy_subscriptions,
     "/api/proxy/groups": proxy_groups,

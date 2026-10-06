@@ -10,6 +10,7 @@ import { get, post, put, readCsv, req } from './client'
 import { t } from '../i18n'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
+import { mapDataLimit, mapMobileData } from './wwan'
 import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
 import { boolLike, finiteNumber, intInRange, isObj, nonEmptyStr, nonNegative, nonNegativeInt, obj, str, strList, arr } from './validate'
 import { widthMhz } from './wifiWidth'
@@ -921,6 +922,13 @@ export const api = {
   simImei: () => get('/api/sim/imei'),
   modemCapabilities: () => get('/api/modem/capabilities').then(mapModemCapabilities),
   networkModeSet: (net_select: string) => put('/api/modem/network-mode', { net_select }),
+  /** The agent waits for the link to change, so allow a longer timeout. */
+  mobileData: () => get('/api/modem/data').then(mapMobileData),
+  mobileDataSet: (connect: boolean) =>
+    req('PUT', '/api/modem/data', { connect }, undefined, 20_000).then(mapMobileData),
+  dataLimit: () => get('/api/data-usage/limit').then(mapDataLimit),
+  dataLimitSet: (body: { enabled: boolean; limit_bytes?: number; alert_percent?: number }) =>
+    put('/api/data-usage/limit', body).then(mapDataLimit),
 
   // WiFi
   wifiStatus: () => get('/api/wifi/status').then(mapWifi),

@@ -18,6 +18,7 @@ use crate::sim;
 use crate::sms;
 use crate::usb;
 use crate::wifi;
+use crate::wwan;
 
 /// How long a worker blocks before re-checking whether the listener died.
 /// Also bounds how long a rebuild waits for the other workers to drain.
@@ -345,6 +346,10 @@ pub fn route(
             handlers::data_usage_reset_day_set(state, body)
         }
         (&Method::Get, "/api/modem/capabilities") => cell::modem_capabilities(state),
+        (&Method::Get, "/api/modem/data") => wwan::data_get(state),
+        (&Method::Put, "/api/modem/data") => wwan::data_set(state, body),
+        (&Method::Get, "/api/data-usage/limit") => wwan::limit_get(state),
+        (&Method::Put, "/api/data-usage/limit") => wwan::limit_set(state, body),
         (&Method::Put, "/api/modem/network-mode") => cell::modem_network_mode_set(state, body),
         // SMS
         (&Method::Get, "/api/sms/capabilities") => sms::sms_capabilities(state),

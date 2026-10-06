@@ -10,6 +10,8 @@ import { Button, Field, Input } from '../../ui/controls'
 import { toast, toastError } from '../../ui/feedback'
 import { Card, InlineStatus, Skeleton, Unavailable } from '../../ui/primitives'
 import { cycleView, parseResetDay, resetDayCopy } from './usageView'
+import DataLimitCard from './DataLimitCard'
+import MobileDataCard from './MobileDataCard'
 
 /** A byte counter: a real zero reads "0 B"; an unknown counter reads as unavailable, never zero. */
 function Bytes({ value }: { value: number | null }) {
@@ -131,6 +133,7 @@ export default function DataTab() {
 
   return (
     <div className="space-y-3">
+      <MobileDataCard />
       {home.status === 'stale' && (
         <InlineStatus kind="stale" action={{ label: t('Retry'), onClick: home.refresh, loading: home.refreshing }}>
           {t('Showing the last usage the router reported. The latest refresh failed.')}
@@ -199,6 +202,8 @@ export default function DataTab() {
           <p className="text-body text-ink3">{t('No cycle data')}</p>
         )}
       </Card>
+
+      <DataLimitCard cycleUsed={cycle ? usageTotal(cycle) : null} />
 
       {sincePowerOn && (
         <Card title={t('Connection counters')}>

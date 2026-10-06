@@ -33,6 +33,13 @@ pub struct DashboardCache {
     cycle_dates: Cached<(Option<String>, Option<String>)>,
 }
 
+impl DashboardCache {
+    /// Drop the cached usage after a change made outside the reset-day path.
+    pub fn invalidate_usage(&self) {
+        self.data_usage.invalidate();
+    }
+}
+
 pub struct AppState {
     pub binding: Arc<crate::lan::Binding>,
     pub lan: Arc<crate::lan::LanManager>,

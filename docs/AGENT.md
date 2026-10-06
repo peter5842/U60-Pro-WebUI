@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 66 paths / 74 method+path pairs.
+(plus that the mock agent stays in step). 68 paths / 78 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -30,7 +30,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Device | `GET /api/device/battery-info`, `/api/device/thermal/all`, `/api/device/battery/detail`, `/api/device/charger`; `POST /api/device/reboot`, `/api/device/shutdown` |
 | System | `POST /api/system/restart-agent`, `/api/system/kill-bloat` |
 | Wi-Fi | `GET /api/wifi/status`, `PUT /api/wifi/settings` |
-| Modem | `PUT /api/data-usage/reset-day`, `PUT /api/modem/network-mode` |
+| Modem | `PUT /api/data-usage/reset-day`, `PUT /api/modem/network-mode`; `GET+PUT /api/modem/data` (mobile data connect/disconnect; link state from `connect_status`, the PUT waits up to 8 s for it to settle); `GET+PUT /api/data-usage/limit` (monthly data limit in bytes plus alert percentage; a time-based limit set in the stock UI is reported read-only) |
 | Cell/band lock | `POST /api/cell/lock/nr`, `/api/cell/lock/lte`, `/api/cell/lock/reset`, `/api/cell/band/nr`, `/api/cell/band/lte`, `/api/cell/band/reset` |
 | Router | `GET+PUT /api/router/dns`, `/api/router/lan`, `/api/router/apn/mode`; `GET+POST /api/router/apn/profiles`; `POST /api/router/apn/profiles/delete`, `/api/router/apn/profiles/activate` |
 | SMS | `POST /api/sms/list`, `/api/sms/send`, `/api/sms/delete`, `/api/sms/read` (delete falls back to direct SQLite for SIM-stored rows the firmware refuses) |
