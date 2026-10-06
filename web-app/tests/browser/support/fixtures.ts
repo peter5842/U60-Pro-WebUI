@@ -414,6 +414,22 @@ export function smsList(over?: { messages?: Json[] }): Json {
   }
 }
 
+export const mobileData = (over?: Json): Json =>
+  merge(
+    {
+      connected: true,
+      connect_status: 'ipv4_ipv6_connected',
+      auto_connect: true,
+      roaming_allowed: true,
+      ipv4: '10.0.0.2',
+      ipv6: '2001:db8::2',
+    },
+    over,
+  )
+
+export const dataLimit = (over?: Json): Json =>
+  merge({ enabled: false, kind: 'data', limit_bytes: 107374182400, alert_percent: 80 }, over)
+
 export const apnMode = (over?: Json): Json => merge({ apn_mode: 1 }, over)
 
 export function apnProfiles(over?: { apnListArray?: Json[] }): Json {
