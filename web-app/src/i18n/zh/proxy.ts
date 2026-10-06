@@ -224,4 +224,5 @@ export const proxy: Record<string, string> = {
   'Forwarding OK': '转发正常',
   'Not forwarding': '转发异常',
   'Starts at boot': '开机自启',
+  'Proxy route failing': '境外线路异常',
 }

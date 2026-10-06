@@ -373,6 +373,36 @@ pub fn probe_204(proxy: Option<&str>) -> bool {
     })
 }
 
+/// Endpoints outside the mainland that answer 204 over HTTPS. Through the
+/// mixed port they follow the proxy rules, so a failure means the selected
+/// node path is broken (not mihomo itself).
+const ROUTE_PROBE_URLS: &[&str] = &[
+    "https://www.gstatic.com/generate_204",
+    "https://cp.cloudflare.com/generate_204",
+];
+
+/// One HTTPS 204 check through the proxy's own routing (mixed port).
+pub fn probe_route(proxy: &str) -> bool {
+    ROUTE_PROBE_URLS.iter().any(|url| {
+        let mut cmd = Command::new("/usr/bin/curl");
+        cmd.args([
+            "--silent",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}",
+            "--max-time",
+            "8",
+            "--proxy",
+            proxy,
+            url,
+        ]);
+        process_runner::output(&mut cmd, None, Duration::from_secs(11), 1024)
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "204")
+            .unwrap_or(false)
+    })
+}
+
 /// True once `ip` is assigned locally, i.e. mihomo can bind its listener.
 pub fn address_ready(ip: &str) -> bool {
     std::net::TcpListener::bind((ip, 0)).is_ok()

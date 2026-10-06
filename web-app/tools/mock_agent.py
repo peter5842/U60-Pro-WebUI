@@ -1423,7 +1423,8 @@ def proxy_status():
                     "up_rate": int(jitter(42_000)), "down_rate": int(jitter(1_850_000)), "connections": 37}
         if running else None,
         "route": _route() if running else None,
-        "health": {"ok": True if running else None, "checked_secs_ago": 12 if running else None},
+        "health": {"ok": True if running else None, "route_ok": True if running else None,
+                   "checked_secs_ago": 12 if running else None, "retested_secs_ago": None},
         "restarts": 0, "last_error": None, "notice": None,
     }
 

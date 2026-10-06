@@ -45,6 +45,11 @@ const PROFILE_RETRY: Duration = Duration::from_secs(1800);
 /// Forwarding health check: interval and consecutive failures before acting.
 const PROBE_EVERY: Duration = Duration::from_secs(60);
 const PROBE_FAILURES: u32 = 3;
+/// Proxy-route failures before the auto groups are re-tested, and the
+/// minimum gap between such re-tests (all nodes may simply be down).
+const ROUTE_FAILURES: u32 = 2;
+const RETEST_EVERY: Duration = Duration::from_secs(300);
+const AUTO_GROUP_TYPES: &[&str] = &["URLTest", "Fallback", "LoadBalance"];
 const GROUP_TYPES: &[&str] = &["Selector", "URLTest", "Fallback", "LoadBalance", "Relay"];
 
 pub struct Manager {
@@ -77,6 +82,10 @@ struct Health {
     failures: u32,
     /// A restart was already tried for the current run of failures.
     restarted: bool,
+    /// Last check through the proxy route (foreign endpoint via the rules).
+    route_ok: Option<bool>,
+    route_failures: u32,
+    retested: Option<Instant>,
 }
 
 enum Probe {
@@ -219,7 +228,16 @@ impl Manager {
                     } else {
                         Probe::Failed
                     };
+                    let forwarding = matches!(probe, Probe::Ok);
                     me.lock().probe_result(probe);
+                    // mihomo forwards; is the selected node path working too?
+                    let route_due = me.lock().route_probe_due();
+                    if let (true, Some(secret)) = (forwarding, route_due) {
+                        let ok = service::probe_route(&proxy);
+                        if me.lock().route_result(ok) {
+                            retest_auto_groups(&secret);
+                        }
+                    }
                 }
                 let profile_due = me.lock().profile_due();
                 if let Some(sub) = profile_due {
@@ -352,6 +370,35 @@ impl Inner {
                 }
             }
         }
+    }
+
+    /// The controller secret when the proxy route should be probed: not in
+    /// direct mode, and only when there are nodes to route through.
+    fn route_probe_due(&self) -> Option<String> {
+        let has_nodes = self.state.settings.profile.is_some()
+            || self.state.subscriptions.iter().any(|s| s.enabled);
+        (self.state.settings.mode != Mode::Direct && has_nodes).then(|| self.secret())
+    }
+
+    /// Record a proxy-route check; true when the auto groups should be re-tested.
+    fn route_result(&mut self, ok: bool) -> bool {
+        self.health.route_ok = Some(ok);
+        if ok {
+            self.health.route_failures = 0;
+            return false;
+        }
+        self.health.route_failures += 1;
+        if self.health.route_failures < ROUTE_FAILURES
+            || self
+                .health
+                .retested
+                .is_some_and(|t| t.elapsed() < RETEST_EVERY)
+        {
+            return false;
+        }
+        self.health.route_failures = 0;
+        self.health.retested = Some(Instant::now());
+        true
     }
 
     /// The profile subscription when its auto-update interval has elapsed.
@@ -638,12 +685,54 @@ impl Inner {
             "route": route,
             "health": {
                 "ok": self.health.ok,
+                "route_ok": self.health.route_ok,
                 "checked_secs_ago": self.health.checked.map(|t| t.elapsed().as_secs()),
+                "retested_secs_ago": self.health.retested.map(|t| t.elapsed().as_secs()),
             },
             "restarts": self.restarts,
             "last_error": self.last_error,
             "notice": self.notice,
         })
+    }
+}
+
+/// Ask every automatic group (url-test, fallback, load-balance) to test its
+/// members now, so a dead node is dropped without waiting for the group's own
+/// interval. Runs without the manager lock; each test is bounded.
+fn retest_auto_groups(secret: &str) {
+    let ctl = Controller { secret };
+    let Ok(p) = ctl.get("/proxies") else { return };
+    let groups: Vec<(String, String)> = p["proxies"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, g)| {
+            g["type"]
+                .as_str()
+                .is_some_and(|t| AUTO_GROUP_TYPES.contains(&t))
+        })
+        .map(|(name, g)| {
+            let url = g["testUrl"]
+                .as_str()
+                .filter(|u| !u.is_empty())
+                .unwrap_or(config::HEALTH_URL);
+            (name.clone(), url.to_string())
+        })
+        .collect();
+    eprintln!(
+        "[mihomo] proxy route failing; re-testing {} auto groups",
+        groups.len()
+    );
+    for (name, url) in groups {
+        let url = url
+            .replace('%', "%25")
+            .replace(':', "%3A")
+            .replace('/', "%2F")
+            .replace('?', "%3F")
+            .replace('&', "%26")
+            .replace('=', "%3D");
+        let path = format!("/group/{}/delay?url={url}&timeout=5000", segment(&name));
+        let _ = ctl.request("GET", &path, None, Duration::from_secs(30));
     }
 }
 
@@ -1339,6 +1428,30 @@ impl Manager {
 mod tests {
     use super::*;
 
+    impl Manager {
+        /// A manager with default state and no process, touching no files.
+        fn new_for_tests() -> Self {
+            Manager {
+                inner: Mutex::new(Inner {
+                    state: State::default(),
+                    process: None,
+                    version: None,
+                    restarts: 0,
+                    crashes: VecDeque::new(),
+                    backoff: Duration::from_secs(5),
+                    retry_at: None,
+                    last_error: None,
+                    notice: None,
+                    sub_errors: HashMap::new(),
+                    traffic: None,
+                    firewall_checked: None,
+                    profile_attempt: None,
+                    health: Health::default(),
+                }),
+            }
+        }
+    }
+
     fn sample() -> Value {
         json!({
             "GLOBAL": {"type": "Selector", "now": "DIRECT", "all": ["节点选择", "自动选择", "HK 01", "JP 01"]},
@@ -1369,24 +1482,7 @@ mod tests {
 
     #[test]
     fn health_counts_only_mihomo_failures() {
-        let m = Manager {
-            inner: Mutex::new(Inner {
-                state: State::default(),
-                process: None,
-                version: None,
-                restarts: 0,
-                crashes: VecDeque::new(),
-                backoff: Duration::from_secs(5),
-                retry_at: None,
-                last_error: None,
-                notice: None,
-                sub_errors: HashMap::new(),
-                traffic: None,
-                firewall_checked: None,
-                profile_attempt: None,
-                health: Health::default(),
-            }),
-        };
+        let m = Manager::new_for_tests();
         let mut inner = m.lock();
         inner.probe_result(Probe::Failed);
         inner.probe_result(Probe::WanDown);
@@ -1405,6 +1501,40 @@ mod tests {
             inner.probe_result(Probe::Failed);
         }
         assert_eq!(inner.restarts, 0);
+    }
+
+    #[test]
+    fn route_failures_trigger_a_rate_limited_retest() {
+        let m = Manager::new_for_tests();
+        let mut inner = m.lock();
+        assert!(!inner.route_result(false), "one failure is not enough");
+        assert!(
+            inner.route_result(false),
+            "two in a row re-test the auto groups"
+        );
+        assert_eq!(inner.health.route_ok, Some(false));
+        assert!(!inner.route_result(false));
+        assert!(
+            !inner.route_result(false),
+            "at most one re-test per RETEST_EVERY"
+        );
+        assert!(!inner.route_result(true));
+        assert_eq!(inner.health.route_failures, 0);
+        assert_eq!(inner.health.route_ok, Some(true));
+    }
+
+    #[test]
+    fn route_probe_skips_direct_mode_and_empty_configs() {
+        let m = Manager::new_for_tests();
+        let mut inner = m.lock();
+        assert!(
+            inner.route_probe_due().is_none(),
+            "no nodes to route through"
+        );
+        inner.state.settings.profile = Some("x".into());
+        assert!(inner.route_probe_due().is_some());
+        inner.state.settings.mode = Mode::Direct;
+        assert!(inner.route_probe_due().is_none());
     }
 
     #[test]

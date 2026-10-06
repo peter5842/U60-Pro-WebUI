@@ -59,7 +59,12 @@ export function mapProxyStatus(d: Record<string, unknown>): ProxyStatus {
     route: route?.length ? route : undefined,
     profile,
     health: isObj(d.health)
-      ? { ok: boolLike(d.health.ok), checked_secs_ago: nonNegativeInt(d.health.checked_secs_ago) }
+      ? {
+          ok: boolLike(d.health.ok),
+          route_ok: boolLike(d.health.route_ok),
+          checked_secs_ago: nonNegativeInt(d.health.checked_secs_ago),
+          retested_secs_ago: nonNegativeInt(d.health.retested_secs_ago),
+        }
       : undefined,
     restarts: nonNegativeInt(d.restarts) ?? 0,
     last_error: nonEmptyStr(d.last_error),

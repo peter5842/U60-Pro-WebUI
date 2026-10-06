@@ -117,6 +117,9 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
               {s.tun_active && <Chip tone="accent">TUN</Chip>}
               {s.running && s.health?.ok === true && <Chip tone="ok">{t('Forwarding OK')}</Chip>}
               {s.running && s.health?.ok === false && <Chip tone="danger">{t('Not forwarding')}</Chip>}
+              {s.running && s.health?.ok === true && s.health.route_ok === false && (
+                <Chip tone="warn">{t('Proxy route failing')}</Chip>
+              )}
             </div>
           </div>
           <div className="col-span-2 min-w-0 sm:col-span-1">
