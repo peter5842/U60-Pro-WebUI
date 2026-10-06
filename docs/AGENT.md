@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 68 paths / 78 method+path pairs.
+(plus that the mock agent stays in step). 70 paths / 82 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -27,7 +27,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Batch | `GET /api/dashboard` — device, battery, cpu, memory, speed, data usage, signal, wan, wan6, thermal in one request. The app's heartbeat: Home, Signal and Modem/Data all read it instead of polling their own endpoints |
 | Status | `GET /api/device`, `/api/cpu`, `/api/memory`, `/api/system/top` |
 | Network | `GET /api/network/clients` |
-| Device | `GET /api/device/battery-info`, `/api/device/thermal/all`, `/api/device/battery/detail`, `/api/device/charger`; `POST /api/device/reboot`, `/api/device/shutdown` |
+| Device | `GET /api/device/battery-info`, `/api/device/thermal/all`, `/api/device/battery/detail`, `/api/device/charger`; `POST /api/device/reboot`, `/api/device/shutdown`; `GET+PUT /api/device/sleep` (idle minutes before the device sleeps, `-1` = never; stock `set_ufi_sleep`); `GET+PUT /api/device/reboot-schedule` (weekly or every N days, time and random delay window; stock `set_device_info`, read from uci `zwrt_zte_mc.reboot_schedule`) |
 | System | `POST /api/system/restart-agent`, `/api/system/kill-bloat` |
 | Wi-Fi | `GET /api/wifi/status`, `PUT /api/wifi/settings` |
 | Modem | `PUT /api/data-usage/reset-day`, `PUT /api/modem/network-mode`; `GET+PUT /api/modem/data` (mobile data connect/disconnect; link state from `connect_status`, the PUT waits up to 8 s for it to settle); `GET+PUT /api/data-usage/limit` (monthly data limit in bytes plus alert percentage; a time-based limit set in the stock UI is reported read-only) |

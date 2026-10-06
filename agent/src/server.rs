@@ -13,6 +13,7 @@ use crate::device_ext;
 use crate::handlers::{self, AppState};
 use crate::network_ext;
 use crate::router;
+use crate::schedule;
 use crate::signal_logger;
 use crate::sim;
 use crate::sms;
@@ -334,6 +335,10 @@ pub fn route(
         (&Method::Get, "/api/device/thermal/all") => device_ext::device_thermal_all(state),
         (&Method::Get, "/api/device/battery/detail") => device_ext::device_battery_detail(state),
         (&Method::Get, "/api/device/charger") => device_ext::device_charger(state),
+        (&Method::Get, "/api/device/sleep") => schedule::sleep_get(state),
+        (&Method::Put, "/api/device/sleep") => schedule::sleep_set(state, body),
+        (&Method::Get, "/api/device/reboot-schedule") => schedule::reboot_schedule_get(state),
+        (&Method::Put, "/api/device/reboot-schedule") => schedule::reboot_schedule_set(state, body),
         (&Method::Get, "/api/device/charge-control") => device_ext::charge_control_get(state),
         (&Method::Put, "/api/device/charge-control") => device_ext::charge_control_set(state, body),
         // Network

@@ -16,6 +16,7 @@ mod mihomo;
 mod network_ext;
 mod process;
 mod router;
+mod schedule;
 mod server;
 mod signal_logger;
 mod sim;

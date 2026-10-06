@@ -606,3 +606,21 @@ export interface DataLimit {
   limit_bytes?: number
   alert_percent?: number
 }
+
+export interface SleepSetting {
+  /** Idle minutes before the device sleeps; -1 = never. */
+  minutes: number
+  options: number[]
+}
+
+export interface RebootSchedule {
+  enabled: boolean
+  /** `weekly`: on `weekday` (0 = Sunday). `interval`: every `interval_days` days since boot. */
+  mode: 'weekly' | 'interval'
+  weekday: number
+  interval_days: number
+  hour: number
+  minute: number
+  /** The firmware reboots at a random moment within this many hours after the set time. */
+  window_hours: number
+}

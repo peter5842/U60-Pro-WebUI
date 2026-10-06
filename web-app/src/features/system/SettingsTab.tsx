@@ -29,6 +29,7 @@ import {
   type UsbModeKey,
   type UsbProbe,
 } from './usbView'
+import PowerScheduleCard from './PowerScheduleCard'
 
 // ── Read failures ─────────────────────────────────────────────────────────────
 
@@ -407,6 +408,8 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <UsbSection />
+
+      <PowerScheduleCard />
 
       <Card title={t('Service controls')}>
         <div className="flex flex-wrap items-center gap-2">

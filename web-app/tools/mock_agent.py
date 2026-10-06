@@ -1325,6 +1325,51 @@ def csv_download(name, text):
     return handler
 
 
+# ── Sleep timer and scheduled reboot ─────────────────────────────────────────
+
+SLEEP_MINUTES = [-1, 5, 10, 20, 30, 60, 120]
+
+
+def sleep_setting():
+    return {"minutes": STATE["power"]["sleep"], "options": SLEEP_MINUTES}
+
+
+def put_sleep(body):
+    minutes = need_object(body, None).get("minutes")
+    if not (_is_int(minutes) and minutes in SLEEP_MINUTES):
+        raise ApiError(400, "minutes must be -1 (never), 5, 10, 20, 30, 60 or 120")
+    STATE["power"]["sleep"] = minutes
+    return sleep_setting()
+
+
+REBOOT_LIMITS = {"weekday": (0, 6), "interval_days": (1, 30), "hour": (0, 23), "minute": (0, 59), "window_hours": (0, 6)}
+
+
+def reboot_schedule():
+    return dict(STATE["power"]["reboot"])
+
+
+def put_reboot_schedule(body):
+    obj = need_object(body, None)
+    cur = dict(STATE["power"]["reboot"])
+    for key, value in obj.items():
+        if key == "enabled":
+            if not isinstance(value, bool):
+                raise ApiError(400, "enabled must be a boolean")
+        elif key == "mode":
+            if value not in ("weekly", "interval"):
+                raise ApiError(400, "mode must be weekly or interval")
+        elif key in REBOOT_LIMITS:
+            lo, hi = REBOOT_LIMITS[key]
+            if not (_is_int(value) and lo <= value <= hi):
+                raise ApiError(400, f"{key} must be {lo}-{hi}")
+        else:
+            raise ApiError(400, f"unknown field {key}")
+        cur[key] = value
+    STATE["power"]["reboot"] = cur
+    return reboot_schedule()
+
+
 # ── Mobile data and monthly limit ────────────────────────────────────────────
 
 def mobile_data():
@@ -1667,6 +1712,8 @@ def initial_state(scenario):
         "sms": sms_defaults(),
         "loggers": logger_defaults(),
         "proxy": proxy_defaults(),
+        "power": {"sleep": -1, "reboot": {"enabled": False, "mode": "weekly", "weekday": 2, "interval_days": 1,
+                                         "hour": 2, "minute": 0, "window_hours": 2}},
         "wwan": {"connected": True, "limit": {"enabled": False, "bytes": 322122547200, "alert": 80}},
     }
 
@@ -1694,6 +1741,8 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/device/sleep": put_sleep,
+    "/api/device/reboot-schedule": put_reboot_schedule,
     "/api/modem/data": put_mobile_data,
     "/api/data-usage/limit": put_data_limit,
     "/api/proxy/settings": put_proxy_settings,
@@ -1714,6 +1763,8 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/device/sleep": sleep_setting,
+    "/api/device/reboot-schedule": reboot_schedule,
     "/api/modem/data": mobile_data,
     "/api/data-usage/limit": data_limit,
     "/api/proxy/status": proxy_status,

@@ -430,6 +430,11 @@ export const mobileData = (over?: Json): Json =>
 export const dataLimit = (over?: Json): Json =>
   merge({ enabled: false, kind: 'data', limit_bytes: 107374182400, alert_percent: 80 }, over)
 
+export const sleep = (over?: Json): Json => merge({ minutes: -1, options: [-1, 5, 10, 20, 30, 60, 120] }, over)
+
+export const rebootSchedule = (over?: Json): Json =>
+  merge({ enabled: false, mode: 'weekly', weekday: 2, interval_days: 1, hour: 2, minute: 0, window_hours: 2 }, over)
+
 export const apnMode = (over?: Json): Json => merge({ apn_mode: 1 }, over)
 
 export function apnProfiles(over?: { apnListArray?: Json[] }): Json {

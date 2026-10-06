@@ -269,6 +269,8 @@ export function registerDefaults(agent: MockAgent) {
   get('/api/device/charge-control', fx.chargeControl())
   get('/api/router/apn/mode', fx.apnMode())
   get('/api/modem/data', fx.mobileData())
+  get('/api/device/sleep', fx.sleep())
+  get('/api/device/reboot-schedule', fx.rebootSchedule())
   get('/api/data-usage/limit', fx.dataLimit())
   get('/api/router/apn/profiles', fx.apnProfiles())
   get('/api/sms/capabilities', fx.smsCapabilities())
