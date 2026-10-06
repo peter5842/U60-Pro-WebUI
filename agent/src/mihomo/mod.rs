@@ -10,6 +10,10 @@
 //! and the controller secret). Every change follows render → `mihomo -t` →
 //! atomic replace → hot reload, and is rolled back when the reload fails.
 
+// A guard in an `if let`/`match` scrutinee lives for the whole block (edition
+// 2021); re-locking inside it deadlocks the watchdog and every handler.
+#![deny(clippy::significant_drop_in_scrutinee)]
+
 mod config;
 mod controller;
 mod profile;
@@ -205,7 +209,9 @@ impl Manager {
             loop {
                 me.lock().tick();
                 // Probe without holding the lock: it can take several seconds.
-                if let Some(proxy) = me.lock().probe_due() {
+                // Bind first: the guard must be released before the block re-locks.
+                let probe_due = me.lock().probe_due();
+                if let Some(proxy) = probe_due {
                     let probe = if service::probe_204(Some(&proxy)) {
                         Probe::Ok
                     } else if !service::probe_204(None) {
@@ -215,7 +221,8 @@ impl Manager {
                     };
                     me.lock().probe_result(probe);
                 }
-                if let Some(sub) = me.lock().profile_due() {
+                let profile_due = me.lock().profile_due();
+                if let Some(sub) = profile_due {
                     if let Err(e) = me.refresh_profile(&sub) {
                         eprintln!("[mihomo] scheduled profile update failed: {e}");
                     }
