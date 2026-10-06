@@ -22,8 +22,28 @@ const PDP_LABELS: Record<number, string> = { 1: 'IPv4', 2: 'IPv6', 3: 'IPv4v6' }
 const AUTH_LABELS: Record<number, string> = { 0: t('None'), 1: 'PAP', 2: 'CHAP', 3: 'PAP/CHAP' }
 
 const EMPTY_FORM = { name: '', apn: '', user: '', pass: '', auth: 0, pdp: 3 }
+type ProfileDraft = typeof EMPTY_FORM
 
-type Op = 'mode' | 'activate' | 'delete' | 'add'
+const draftOf = (p: ApnProfile): ProfileDraft => ({
+  name: p.profilename,
+  apn: p.wanapn,
+  user: p.username,
+  pass: p.password,
+  auth: p.pppAuthMode ?? 0,
+  pdp: p.pdpType ?? 3,
+})
+
+const wireOf = (d: ProfileDraft) => ({
+  profilename: d.name,
+  wanapn: d.apn,
+  // Credentials only mean something with PAP/CHAP; the agent rejects them otherwise.
+  username: d.auth === 0 ? '' : d.user,
+  password: d.auth === 0 ? '' : d.pass,
+  pppAuthMode: d.auth,
+  pdpType: d.pdp,
+})
+
+type Op = 'mode' | 'activate' | 'delete' | 'add' | 'edit'
 
 /**
  * One owner for APN mode and profiles: both observations, the "an operation is running" lock that
@@ -184,6 +204,40 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
   const { mode, op } = apn
   const locked = op !== null
   const observed: ObservedApnMode = mode.data?.mode ?? 'unknown'
+  const [editing, setEditing] = useState<string | null>(null)
+
+  async function saveProfile(p: ApnProfile, draft: ProfileDraft): Promise<boolean> {
+    if (locked) return false
+    const live = p.isEnable && observed === 'manual'
+    if (live) {
+      const ok = await confirm({
+        title: t('Change the active APN profile?'),
+        kind: 'connection',
+        confirmLabel: t('Save'),
+        details: [
+          { label: t('Profile'), value: draft.name },
+          { label: 'APN', value: draft.apn },
+        ],
+        consequence: t('Mobile data reconnects with the new settings, so Internet access may drop briefly. Wrong settings stop mobile data until they are corrected.'),
+        recovery: t('Edit the profile again, or switch APN mode to automatic.'),
+      })
+      if (!ok) return false
+    }
+    let saved = false
+    await apn.run('edit', async () => {
+      try {
+        await api.apnEdit({ profileId: p.profileId, ...wireOf(draft) })
+      } catch (e) {
+        toastError(e, t('Failed to save APN profile'))
+        return
+      }
+      saved = true
+      setEditing(null)
+      const verified = await apn.readBack()
+      if (verified && live) apn.setNotice(t('Saved "{name}". Mobile data may reconnect briefly.', { name: draft.name }))
+    })
+    return saved
+  }
 
   async function activateProfile(p: ApnProfile) {
     if (locked) return
@@ -225,7 +279,19 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
 
   return (
     <div className="space-y-2">
-      {profiles.map((p) => (
+      {profiles.map((p) =>
+        editing === p.profileId ? (
+          <ProfileForm
+            key={p.profileId}
+            title={t('Edit "{name}"', { name: p.profilename })}
+            initial={draftOf(p)}
+            submitLabel={t('Save')}
+            busy={op === 'edit'}
+            locked={locked}
+            onSubmit={(d) => saveProfile(p, d)}
+            onCancel={() => setEditing(null)}
+          />
+        ) : (
         <div
           key={p.profileId}
           className={`flex flex-wrap items-center justify-between gap-2 rounded-ctl border px-3 py-2 ${
@@ -247,6 +313,9 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
             </p>
           </div>
           <div className="flex shrink-0 gap-1.5">
+            <Button size="sm" variant="ghost" disabled={locked} onClick={() => setEditing(p.profileId)} aria-label={t('Edit {name}', { name: p.profilename })}>
+              {t('Edit')}
+            </Button>
             {!p.isEnable && (
               <Button size="sm" variant="primary" disabled={locked} onClick={() => activateProfile(p)} aria-label={t('Activate {name}', { name: p.profilename })}>
                 {t('Activate')}
@@ -264,63 +333,39 @@ function ProfileList({ apn, profiles }: { apn: ApnOwner; profiles: ApnProfile[] 
             </Button>
           </div>
         </div>
-      ))}
+        ),
+      )}
     </div>
   )
 }
 
-function AddProfile({ apn }: { apn: ApnOwner }) {
-  const { op } = apn
-  const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const locked = op !== null
-
-  async function addProfile() {
-    if (locked) return
-    // Freeze the draft being submitted.
-    const draft = form
-    await apn.run('add', async () => {
-      try {
-        await api.apnAdd({
-          profilename: draft.name,
-          wanapn: draft.apn,
-          username: draft.user,
-          password: draft.pass,
-          pppAuthMode: draft.auth,
-          pdpType: draft.pdp,
-        })
-      } catch (e) {
-        // Keep the open form and every field so the user can correct and retry.
-        toastError(e, t('Failed to add profile'))
-        return
-      }
-      setAdding(false)
-      setForm(EMPTY_FORM)
-      await apn.readBack()
-    })
-  }
-
-  if (!adding) {
-    return (
-      <Button variant="primary" onClick={() => setAdding(true)} disabled={locked}>
-        {t('Add APN profile')}
-      </Button>
-    )
-  }
+function ProfileForm({
+  title,
+  initial,
+  submitLabel,
+  busy,
+  locked,
+  onSubmit,
+  onCancel,
+}: {
+  title: string
+  initial: ProfileDraft
+  submitLabel: string
+  busy: boolean
+  locked: boolean
+  /** Resolves true when saved; the form keeps every field (including the password) otherwise. */
+  onSubmit: (d: ProfileDraft) => Promise<boolean>
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState(initial)
   return (
-    <Card title={t('Add APN profile')}>
+    <Card title={title}>
       <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
         <Field label={t('Profile name')}>
           <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('My Carrier')} />
         </Field>
         <Field label="APN">
           <Input value={form.apn} onChange={(e) => setForm((f) => ({ ...f, apn: e.target.value }))} placeholder="internet" />
-        </Field>
-        <Field label={t('Username')}>
-          <Input value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder={t('(optional)')} />
-        </Field>
-        <Field label={t('Password')}>
-          <Input type="password" autoComplete="new-password" value={form.pass} onChange={(e) => setForm((f) => ({ ...f, pass: e.target.value }))} placeholder={t('(optional)')} />
         </Field>
         <Field label={t('Authentication')}>
           <Select value={form.auth} onChange={(e) => setForm((f) => ({ ...f, auth: parseInt(e.target.value) }))}>
@@ -337,24 +382,77 @@ function AddProfile({ apn }: { apn: ApnOwner }) {
             <option value={2}>IPv6</option>
           </Select>
         </Field>
+        {form.auth !== 0 && (
+          <>
+            <Field label={t('Username')}>
+              <Input value={form.user} onChange={(e) => setForm((f) => ({ ...f, user: e.target.value }))} placeholder={t('(optional)')} />
+            </Field>
+            <Field label={t('Password')}>
+              <Input type="password" autoComplete="new-password" value={form.pass} onChange={(e) => setForm((f) => ({ ...f, pass: e.target.value }))} placeholder={t('(optional)')} />
+            </Field>
+          </>
+        )}
       </div>
       <div className="mt-3 flex gap-2">
-        <Button variant="primary" onClick={addProfile} loading={op === 'add'} disabled={locked || !form.name || !form.apn}>
-          {t('Add profile')}
+        <Button variant="primary" onClick={() => void onSubmit(form)} loading={busy} disabled={locked || !form.name || !form.apn}>
+          {submitLabel}
         </Button>
-        <Button
-          variant="ghost"
-          disabled={locked}
-          onClick={() => {
-            // Cancelling discards the draft, including the password.
-            setAdding(false)
-            setForm(EMPTY_FORM)
-          }}
-        >
+        <Button variant="ghost" disabled={locked} onClick={onCancel}>
           {t('Cancel')}
         </Button>
       </div>
     </Card>
+  )
+}
+
+function AddProfile({ apn }: { apn: ApnOwner }) {
+  const { op } = apn
+  const [adding, setAdding] = useState(false)
+  // A new key resets the form after a successful add.
+  const [formKey, setFormKey] = useState(0)
+  const locked = op !== null
+
+  async function addProfile(draft: ProfileDraft): Promise<boolean> {
+    if (locked) return false
+    let added = false
+    await apn.run('add', async () => {
+      try {
+        await api.apnAdd(wireOf(draft))
+      } catch (e) {
+        // Keep the open form and every field so the user can correct and retry.
+        toastError(e, t('Failed to add profile'))
+        return
+      }
+      added = true
+      setAdding(false)
+      setFormKey((k) => k + 1)
+      await apn.readBack()
+    })
+    return added
+  }
+
+  if (!adding) {
+    return (
+      <Button variant="primary" onClick={() => setAdding(true)} disabled={locked}>
+        {t('Add APN profile')}
+      </Button>
+    )
+  }
+  return (
+    <ProfileForm
+      key={formKey}
+      title={t('Add APN profile')}
+      initial={EMPTY_FORM}
+      submitLabel={t('Add profile')}
+      busy={op === 'add'}
+      locked={locked}
+      onSubmit={addProfile}
+      onCancel={() => {
+        // Cancelling discards the draft, including the password.
+        setAdding(false)
+        setFormKey((k) => k + 1)
+      }}
+    />
   )
 }
 

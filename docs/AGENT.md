@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 73 paths / 86 method+path pairs.
+(plus that the mock agent stays in step). 73 paths / 87 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -32,7 +32,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Wi-Fi | `GET /api/wifi/status`, `PUT /api/wifi/settings`. Guest network: `guest_ssid`, `guest_key`, `guest_encryption` and `guest_hidden` go to both guest APs through uci like the main network; `guest_disabled_2g/5g` and `guest_active_time` (minutes: 0, 120, 240, 480, 720) go through the stock `zwrt_wlan set`, which runs the firmware's guest timer (`guest_left_secs` in the status). The stock call rejects a plaintext key, hence the split. An open guest network without a time limit is refused, as in the stock UI |
 | Modem | `PUT /api/data-usage/reset-day`, `PUT /api/modem/network-mode`; `GET+PUT /api/modem/data` (mobile data connect/disconnect; link state from `connect_status`, the PUT waits up to 8 s for it to settle); `GET+PUT /api/data-usage/limit` (monthly data limit in bytes plus alert percentage; a time-based limit set in the stock UI is reported read-only) |
 | Cell/band lock | `POST /api/cell/lock/nr`, `/api/cell/lock/lte`, `/api/cell/lock/reset`, `/api/cell/band/nr`, `/api/cell/band/lte`, `/api/cell/band/reset` |
-| Router | `GET+PUT /api/router/dns`, `/api/router/lan`, `/api/router/apn/mode`; `GET+POST /api/router/apn/profiles`; `POST /api/router/apn/profiles/delete`, `/api/router/apn/profiles/activate` |
+| Router | `GET+PUT /api/router/dns`, `/api/router/lan`, `/api/router/apn/mode`; `GET+POST+PUT /api/router/apn/profiles` (PUT edits a profile in place with the stock `modify_manu_apn`, carrying over `isEnable`/`cid`/`roamingPdpType` from the current entry); `POST /api/router/apn/profiles/delete`, `/api/router/apn/profiles/activate` |
 | SMS | `POST /api/sms/list`, `/api/sms/send`, `/api/sms/delete`, `/api/sms/read` (delete falls back to direct SQLite for SIM-stored rows the firmware refuses) |
 | SIM | `GET /api/sim/info`, `/api/sim/imei` |
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |

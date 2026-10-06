@@ -249,6 +249,104 @@ pub fn router_apn_profiles_add(_state: &AppState, body: &[u8]) -> (u16, Value) {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct EditedApn {
+    profile_id: String,
+    profilename: String,
+    wanapn: String,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    password: String,
+    pdp_type: u8,
+    ppp_auth_mode: u8,
+}
+
+impl EditedApn {
+    fn fields(&self) -> ManualApn {
+        ManualApn {
+            profilename: self.profilename.clone(),
+            wanapn: self.wanapn.clone(),
+            username: self.username.clone(),
+            password: self.password.clone(),
+            pdp_type: self.pdp_type,
+            ppp_auth_mode: self.ppp_auth_mode,
+        }
+    }
+}
+
+/// The firmware's own bookkeeping fields of a profile, carried over unchanged
+/// so an edit never flips which profile is enabled.
+fn apn_entry<'a>(data: &'a Value, profile_id: &str) -> Option<&'a Value> {
+    data.get("apnListArray")?
+        .as_array()?
+        .iter()
+        .find(|p| match p.get("profileId") {
+            Some(Value::String(id)) => id == profile_id,
+            Some(Value::Number(id)) => id.to_string() == profile_id,
+            _ => false,
+        })
+}
+
+fn modify_payload(edit: &EditedApn, current: &Value) -> Value {
+    let mut payload = json!({
+        "profileId": edit.profile_id,
+        "profilename": edit.profilename,
+        "wanapn": edit.wanapn,
+        "username": edit.username,
+        "password": edit.password,
+        "pdpType": edit.pdp_type,
+        "pppAuthMode": edit.ppp_auth_mode,
+    });
+    for key in ["isEnable", "cid", "isValid", "extraInt1", "roamingPdpType"] {
+        if let Some(v) = current.get(key) {
+            payload[key] = v.clone();
+        }
+    }
+    payload
+}
+
+/// PUT /api/router/apn/profiles — edit one manual profile in place.
+pub fn router_apn_profiles_edit(_state: &AppState, body: &[u8]) -> (u16, Value) {
+    let parsed: EditedApn = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                400,
+                json!({"ok": false, "error": format!("invalid APN profile: {e}")}),
+            )
+        }
+    };
+    if let Err(e) = (ApnProfileId {
+        profile_id: parsed.profile_id.clone(),
+    })
+    .validate()
+    .and_then(|()| parsed.fields().validate())
+    {
+        return (400, json!({"ok": false, "error": e}));
+    }
+    let list = match ubus::call("zwrt_apn_object", "get_manu_apn_list", Some("{}")) {
+        Ok(v) => v,
+        Err(e) => return (503, json!({"ok": false, "error": e})),
+    };
+    let Some(current) = apn_entry(&list, &parsed.profile_id) else {
+        return (
+            404,
+            json!({"ok": false, "error": "no APN profile with that id"}),
+        );
+    };
+    let payload = modify_payload(&parsed, current);
+    match ubus::call(
+        "zwrt_apn_object",
+        "modify_manu_apn",
+        Some(&payload.to_string()),
+    ) {
+        Ok(data) => (200, json!({"ok": true, "data": data})),
+        Err(e) => (503, json!({"ok": false, "error": e})),
+    }
+}
+
 pub fn router_apn_profiles_delete(_state: &AppState, body: &[u8]) -> (u16, Value) {
     let parsed: ApnProfileId = match serde_json::from_slice(body) {
         Ok(v) => v,
@@ -454,6 +552,29 @@ mod tests {
         let mut includes_router = valid_lan();
         includes_router.dhcp_start = "192.168.0.1".into();
         assert!(validate_lan_settings(&includes_router).is_err());
+    }
+
+    #[test]
+    fn apn_edit_keeps_firmware_fields() {
+        let list = json!({"apnListArray": [
+            {"profileId": "manu1", "profilename": "Default", "isEnable": true, "cid": 0, "isValid": 0, "extraInt1": 0, "roamingPdpType": 3}
+        ]});
+        let edit: EditedApn = serde_json::from_value(json!({
+            "profileId": "manu1", "profilename": "Work", "wanapn": "cmnet", "pdpType": 1, "pppAuthMode": 0
+        }))
+        .unwrap();
+        let current = apn_entry(&list, "manu1").unwrap();
+        let p = modify_payload(&edit, current);
+        assert_eq!(p["profilename"], "Work");
+        assert_eq!(p["isEnable"], true);
+        assert_eq!(p["roamingPdpType"], 3);
+        assert_eq!(p["password"], "");
+        assert!(apn_entry(&list, "manu9").is_none());
+        // Firmware bookkeeping fields cannot be set from a request.
+        assert!(serde_json::from_value::<EditedApn>(json!({
+            "profileId": "manu1", "profilename": "W", "wanapn": "x", "pdpType": 1, "pppAuthMode": 0, "isEnable": false
+        }))
+        .is_err());
     }
 
     #[test]

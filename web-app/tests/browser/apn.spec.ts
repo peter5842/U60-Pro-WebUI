@@ -247,6 +247,8 @@ test.describe('honest read and write states', () => {
     await page.getByRole('button', { name: 'Add APN profile' }).click()
     await page.getByLabel('Profile name').fill('Draft Profile')
     await page.getByRole('textbox', { name: 'APN', exact: true }).fill('draft.example')
+    // Credentials are only offered (and accepted by the agent) with PAP/CHAP.
+    await page.getByLabel('Authentication').selectOption({ label: 'PAP' })
     await page.getByLabel('Password').fill('draft-secret')
     await page.getByRole('button', { name: 'Add profile' }).click()
 
@@ -256,7 +258,7 @@ test.describe('honest read and write states', () => {
     await expect(page.getByLabel('Password')).toHaveValue('draft-secret')
     const posts = agent.requests({ method: 'POST', path: '/api/router/apn/profiles' })
     expect(posts).toHaveLength(1)
-    expect(posts[0].body).toMatchObject({ profilename: 'Draft Profile', wanapn: 'draft.example', password: 'draft-secret' })
+    expect(posts[0].body).toMatchObject({ profilename: 'Draft Profile', wanapn: 'draft.example', password: 'draft-secret', pppAuthMode: 1 })
     expect(agent.mutations()).toHaveLength(1)
   })
 
@@ -272,5 +274,36 @@ test.describe('honest read and write states', () => {
     await expect(page.getByText('Synthetic M2M')).toHaveCount(0)
     await expect(page.locator('[data-toast]')).toHaveCount(0)
     expect(agent.requests({ method: 'POST', path: '/api/router/apn/profiles/delete' }).map((r) => r.body)).toEqual([{ profileId: '2' }])
+  })
+})
+
+test.describe('editing a profile', () => {
+  test('an inactive profile is saved in place without a confirmation', async ({ page, agent }) => {
+    const state = apnAgent(agent, { mode: 1, profiles: PROFILES('1') })
+    agent.on('PUT', '/api/router/apn/profiles', (req) => {
+      const b = req.body as Record<string, unknown>
+      state.profiles = state.profiles.map((p) => (p.profileId === b.profileId ? { ...p, profilename: b.profilename as string, wanapn: b.wanapn as string } : p))
+      return { data: {} }
+    })
+    await openApp(page, { group: 'modem', tab: 'APN' })
+    await page.getByRole('button', { name: 'Edit Synthetic M2M' }).click()
+    await page.getByRole('textbox', { name: 'APN', exact: true }).fill('m2m.changed')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText(/m2m\.changed/)).toBeVisible()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const puts = agent.requests({ method: 'PUT', path: '/api/router/apn/profiles' })
+    expect(puts).toHaveLength(1)
+    expect(puts[0].body).toMatchObject({ profileId: '2', profilename: 'Synthetic M2M', wanapn: 'm2m.changed' })
+  })
+
+  test('editing the active profile asks first', async ({ page, agent }) => {
+    apnAgent(agent, { mode: 1, profiles: PROFILES('1') })
+    agent.on('PUT', '/api/router/apn/profiles', { data: {} })
+    await openApp(page, { group: 'modem', tab: 'APN' })
+    await page.getByRole('button', { name: 'Edit Synthetic Internet' }).click()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('dialog')).toContainText('Change the active APN profile?')
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+    expect(agent.mutations()).toEqual([])
   })
 })

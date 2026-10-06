@@ -235,4 +235,14 @@ export const modem: Record<string, string> = {
   'Between 0.01 and 1048576 GB': '范围为 0.01 至 1048576 GB',
   'Enter a whole percentage': '请输入整数百分比',
   '1 to 99': '范围为 1 至 99',
+
+  // APN profile editing
+  Edit: '编辑',
+  'Edit {name}': '编辑 {name}',
+  'Edit "{name}"': '编辑“{name}”',
+  'Change the active APN profile?': '修改正在使用的 APN 配置？',
+  'Mobile data reconnects with the new settings, so Internet access may drop briefly. Wrong settings stop mobile data until they are corrected.': '移动数据会以新设置重新连接，网络可能短暂中断。设置错误时，移动数据会一直不可用，直到改正为止。',
+  'Edit the profile again, or switch APN mode to automatic.': '重新编辑该配置，或将 APN 模式切换为自动。',
+  'Failed to save APN profile': '保存 APN 配置失败',
+  'Saved "{name}". Mobile data may reconnect briefly.': '已保存“{name}”。移动数据可能会短暂重新连接。',
 }

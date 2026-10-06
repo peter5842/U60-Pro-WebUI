@@ -1023,11 +1023,11 @@ def _apn_enabled(profile):
     return str(profile["isEnable"]).lower() in ("1", "true")
 
 
-def post_apn_add(body):
-    req = struct_body(body, "invalid APN profile", {
-        "profilename": "str", "wanapn": "str", "username": "str", "password": "str",
-        "pdpType": "u8", "pppAuthMode": "u8",
-    }, optional=("username", "password"))
+def _apn_fields(body, extra=None):
+    """Validate a manual profile like router.rs (ManualApn::validate)."""
+    shape = {"profilename": "str", "wanapn": "str", "username": "str", "password": "str",
+             "pdpType": "u8", "pppAuthMode": "u8", **(extra or {})}
+    req = struct_body(body, "invalid APN profile", shape, optional=("username", "password"))
     username, password = req["username"] or "", req["password"] or ""
     for field, value, limit, allow_empty in (
         ("profilename", req["profilename"], 64, False), ("wanapn", req["wanapn"], 100, False),
@@ -1043,6 +1043,11 @@ def post_apn_add(body):
         raise ApiError(400, "pppAuthMode must be between 0 and 3")
     if req["pppAuthMode"] == 0 and (username or password):
         raise ApiError(400, "credentials require PAP, CHAP, or PAP/CHAP authentication")
+    return req, username, password
+
+
+def post_apn_add(body):
+    req, username, password = _apn_fields(body)
     apn = STATE["apn"]
     apn["profiles"].append({
         "profilename": req["profilename"], "wanapn": req["wanapn"], "username": username,
@@ -1051,6 +1056,16 @@ def post_apn_add(body):
     })
     apn["next_id"] += 1
     return ok_result()
+
+
+def put_apn_edit(body):
+    req, username, password = _apn_fields(body, {"profileId": "str"})
+    for p in STATE["apn"]["profiles"]:
+        if str(p["profileId"]) == req["profileId"]:
+            p.update(profilename=req["profilename"], wanapn=req["wanapn"], username=username,
+                     password=password, pdpType=req["pdpType"], pppAuthMode=req["pppAuthMode"])
+            return ok_result()
+    raise ApiError(404, "no APN profile with that id")
 
 
 def post_apn_delete(body):
@@ -1833,6 +1848,7 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/router/apn/profiles": put_apn_edit,
     "/api/network/clients/name": put_client_name,
     "/api/network/blocklist": put_blocklist,
     "/api/device/sleep": put_sleep,

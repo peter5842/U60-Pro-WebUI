@@ -386,6 +386,7 @@ pub fn route(
         (&Method::Get, "/api/router/apn/mode") => router::router_apn_mode_get(state),
         (&Method::Put, "/api/router/apn/mode") => router::router_apn_mode_set(state, body),
         (&Method::Get, "/api/router/apn/profiles") => router::router_apn_profiles_get(state),
+        (&Method::Put, "/api/router/apn/profiles") => router::router_apn_profiles_edit(state, body),
         (&Method::Post, "/api/router/apn/profiles") => router::router_apn_profiles_add(state, body),
         (&Method::Post, "/api/router/apn/profiles/delete") => {
             router::router_apn_profiles_delete(state, body)

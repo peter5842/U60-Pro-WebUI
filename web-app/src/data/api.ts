@@ -988,6 +988,7 @@ export const api = {
   apnModeSet: (body: Record<string, unknown>) => put('/api/router/apn/mode', body),
   apnProfiles: () => get('/api/router/apn/profiles').then(mapApnProfiles),
   apnAdd: (body: Record<string, unknown>) => post('/api/router/apn/profiles', body),
+  apnEdit: (body: Record<string, unknown>) => put('/api/router/apn/profiles', body),
   apnDelete: (body: Record<string, unknown>) => post('/api/router/apn/profiles/delete', body),
   apnActivate: (body: Record<string, unknown>) => post('/api/router/apn/profiles/activate', body),
 
