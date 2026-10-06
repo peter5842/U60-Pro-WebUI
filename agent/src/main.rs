@@ -1,6 +1,7 @@
 use crate::process::BoundedCommand;
 mod at_cmd;
 mod auth;
+mod backup;
 mod cache;
 mod cell;
 mod charge_policy;

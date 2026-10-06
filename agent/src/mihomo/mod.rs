@@ -873,6 +873,52 @@ fn main_route(proxies: &Value) -> Value {
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 impl Manager {
+    /// The proxy state for a settings backup (the controller secret is
+    /// device-specific and left out).
+    pub fn export_state(&self) -> Value {
+        let mut state = self.lock().state.clone();
+        state.secret.clear();
+        serde_json::to_value(&state).unwrap_or(Value::Null)
+    }
+
+    /// Replace the proxy state with a backup. A subscription used as the
+    /// profile is downloaded again; if that fails the managed config is used
+    /// and the returned warning says so.
+    pub fn import_state(&self, value: &Value) -> Result<Option<String>, String> {
+        let mut next: State = serde_json::from_value(value.clone())
+            .map_err(|e| format!("invalid proxy backup: {e}"))?;
+        for sub in &next.subscriptions {
+            if sub.id.len() != 8 || !sub.id.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err("invalid subscription id in the backup".into());
+            }
+            config::validate_name(&sub.name)?;
+            config::validate_url(&sub.url)?;
+        }
+        config::validate_port(u64::from(next.settings.mixed_port))?;
+        let mut warning = None;
+        let profile_sub = next
+            .settings
+            .profile
+            .as_ref()
+            .and_then(|id| next.subscriptions.iter().position(|s| &s.id == id));
+        match profile_sub {
+            Some(i) => match profile::fetch(&next.subscriptions[i]) {
+                Ok(f) => next.subscriptions[i].fetched = Some(f),
+                Err(e) => {
+                    next.settings.profile = None;
+                    warning = Some(format!(
+                        "the subscription config could not be downloaded ({e}); using the managed config"
+                    ));
+                }
+            },
+            None => next.settings.profile = None,
+        }
+        let mut inner = self.lock();
+        next.secret = inner.state.secret.clone();
+        inner.apply(next)?;
+        Ok(warning)
+    }
+
     /// `http://<lan ip>:<mixed port>` while mihomo runs, for the agent's own
     /// outbound requests that need the proxy (e.g. Telegram for SMS forwarding).
     pub fn local_proxy(&self) -> Option<String> {

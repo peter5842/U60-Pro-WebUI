@@ -345,6 +345,31 @@ fn tick(state: &AppState) -> Result<(), ()> {
     Ok(())
 }
 
+// ── Backup ───────────────────────────────────────────────────────────────────
+
+/// The settings for a backup, including the key (the backup is private).
+pub fn export() -> Value {
+    let _guard = LOCK.safe_lock();
+    let mut cfg = load();
+    cfg.last_error = None;
+    serde_json::to_value(&cfg).unwrap_or(Value::Null)
+}
+
+pub fn import(value: &Value) -> Result<(), String> {
+    let mut cfg: Config = serde_json::from_value(value.clone())
+        .map_err(|e| format!("invalid SMS forwarding backup: {e}"))?;
+    if !cfg.target.is_empty() {
+        validate_target(cfg.channel, &cfg.target, &cfg.chat_id)?;
+    }
+    // Do not resend whatever arrived since the backup was taken.
+    cfg.last_id = newest_messages()
+        .ok()
+        .map(|m| m.iter().map(|m| m.id).max().unwrap_or(0));
+    cfg.last_error = None;
+    let _guard = LOCK.safe_lock();
+    save(&cfg)
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 fn hint(cfg: &Config) -> Option<String> {

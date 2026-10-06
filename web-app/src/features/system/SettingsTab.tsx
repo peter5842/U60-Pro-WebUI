@@ -30,6 +30,7 @@ import {
   type UsbProbe,
 } from './usbView'
 import PowerScheduleCard from './PowerScheduleCard'
+import BackupCard from './BackupCard'
 import WatchdogCard, { ClockRow } from './WatchdogCard'
 
 // ── Read failures ─────────────────────────────────────────────────────────────
@@ -427,6 +428,8 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
       <PowerScheduleCard />
 
       <WatchdogCard />
+
+      <BackupCard />
 
       <Card title={t('Service controls')}>
         <div className="flex flex-wrap items-center gap-2">

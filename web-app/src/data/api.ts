@@ -1006,6 +1006,12 @@ export const api = {
   clientTraffic: (): Promise<ClientTrafficReport> => get('/api/network/clients/traffic').then(mapClientTraffic),
   clientTrafficReset: (): Promise<ClientTrafficReport> => post('/api/network/clients/traffic/reset', {}).then(mapClientTraffic),
 
+  // Settings backup
+  backup: (): Promise<Record<string, unknown>> => get('/api/system/backup') as Promise<Record<string, unknown>>,
+  /** Restoring re-downloads subscription configs and waits for the watchdog check, so allow minutes. */
+  restore: (doc: Record<string, unknown>): Promise<Record<string, unknown>> =>
+    req('POST', '/api/system/restore', doc, { 'X-Confirm': 'true' }, 180_000) as Promise<Record<string, unknown>>,
+
   // WiFi
   wifiStatus: () => get('/api/wifi/status').then(mapWifi),
   wifiSet: (body: Record<string, unknown>) => put('/api/wifi/settings', body),

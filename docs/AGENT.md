@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 88 paths / 109 method+path pairs.
+(plus that the mock agent stays in step). 90 paths / 111 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -37,6 +37,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Cellular | `GET /api/cell/operators`, `POST /api/cell/operators/scan`, `/api/cell/operators/select` (`{mccmnc, rat}`), `/api/cell/operators/auto` — manual carrier selection through the stock `nwinfo_manual_scan` / `nwinfo_manual_register` flow (the dashboard polls GET); back to automatic re-applies the network mode and waits for `net_select_mode` |
 | SMS forwarding | `GET+PUT /api/sms/forward`, `POST /api/sms/forward/test` — a background thread polls the newest messages every 20 s and pushes received ones above `last_id` to Bark, Server酱, a WeCom group bot, Telegram (optionally through the local mihomo proxy) or a JSON webhook. History is not sent; the key/URL is kept 0600 in `/data/local/tmp/sms_forward.json` and never returned |
 | Client traffic | `GET /api/network/clients/traffic`, `POST /api/network/clients/traffic/reset` — per-device internet bytes from conntrack accounting (IPA offload syncs its counts back), sampled every 10 s by client MAC, saved every 5 min to `/data/local/tmp/client_traffic.json` |
+| Backup | `GET /api/system/backup` (one JSON document: proxy state without the controller secret, SMS forwarding, sleep, reboot schedule, watchdog, UPnP/DMZ/remote access, port rules, fixed addresses, monthly limit, block list, device names; holds subscription links and push keys), `POST /api/system/restore` (X-Confirm; optional `only: [sections]`; each section goes through the normal handlers and reports ok/partial/failed; rules, bindings and block-list entries are added when missing, never deleted; profile configs are downloaded again) |
 | SMS | `POST /api/sms/list`, `/api/sms/send`, `/api/sms/delete`, `/api/sms/read` (delete falls back to direct SQLite for SIM-stored rows the firmware refuses) |
 | SIM | `GET /api/sim/info`, `/api/sim/imei` |
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |

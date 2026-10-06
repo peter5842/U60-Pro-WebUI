@@ -1431,6 +1431,39 @@ def csv_download(name, text):
     return handler
 
 
+# ── Settings backup (backup.rs) ──────────────────────────────────────────────
+
+BACKUP_ORDER = ("proxy", "sms_forward", "client_names", "sleep", "reboot_schedule", "data_limit", "firewall",
+                "dhcp_bindings", "port_rules", "blocklist", "watchdog")
+
+
+def system_backup():
+    return {"format": "u60-pro-webui-backup", "version": 1, "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "firmware": "MOCK_MU5250V1.0.0B31",
+            "sections": {"proxy": {"settings": {}, "subscriptions": [], "secret": ""},
+                         "sms_forward": {"enabled": False}, "client_names": dict(STATE["client_ctl"]["names"]),
+                         "sleep": sleep_setting(), "reboot_schedule": reboot_schedule(), "data_limit": data_limit(),
+                         "firewall": firewall_services(), "dhcp_bindings": dhcp_bindings(), "port_rules": port_rules(),
+                         "blocklist": blocklist(), "watchdog": watchdog()}}
+
+
+def post_system_restore(body):
+    obj = need_object(body, None)
+    if obj.get("format") != "u60-pro-webui-backup":
+        raise ApiError(400, "this is not a U60-Pro-WebUI settings backup")
+    only = obj.get("only")
+    sections = obj.get("sections") or {}
+    results = {}
+    for name in BACKUP_ORDER:
+        if isinstance(only, list) and name not in only:
+            results[name] = {"status": "skipped"}
+        elif sections.get(name) is None:
+            results[name] = {"status": "missing"}
+        else:
+            results[name] = {"status": "ok"}
+    return {"results": results}
+
+
 # ── Carrier selection, SMS forwarding, per-device traffic ────────────────────
 
 def carriers():
@@ -2148,6 +2181,7 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/system/backup": system_backup,
     "/api/cell/operators": carriers,
     "/api/sms/forward": sms_forward,
     "/api/network/clients/traffic": client_traffic,
@@ -2202,6 +2236,7 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/system/restore": post_system_restore,
     "/api/cell/operators/scan": post_carrier_scan,
     "/api/cell/operators/select": post_carrier_select,
     "/api/cell/operators/auto": post_carrier_auto,
@@ -2245,6 +2280,7 @@ ROUTES_POST = {
 
 # agent/src/server.rs::DESTRUCTIVE_PATHS: rejected without `X-Confirm: true`.
 DESTRUCTIVE_PATHS = (
+    "/api/system/restore",
     "/api/device/reboot", "/api/device/shutdown", "/api/system/kill-bloat", "/api/proxy/subscriptions/delete",
 )
 # POSTs that only read; not recorded as mutations.

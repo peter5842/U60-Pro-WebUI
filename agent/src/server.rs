@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::at_cmd;
+use crate::backup;
 use crate::cell;
 use crate::client_traffic;
 use crate::clients;
@@ -104,6 +105,7 @@ const DESTRUCTIVE_PATHS: &[&str] = &[
     "/api/device/shutdown",
     "/api/system/kill-bloat",
     "/api/proxy/subscriptions/delete",
+    "/api/system/restore",
 ];
 
 fn cors_headers(origin: Option<&str>) -> Vec<Header> {
@@ -377,6 +379,8 @@ pub fn route(
         (&Method::Post, "/api/cell/operators/scan") => netselect::scan(state),
         (&Method::Post, "/api/cell/operators/select") => netselect::select(state, body),
         (&Method::Post, "/api/cell/operators/auto") => netselect::auto(state),
+        (&Method::Get, "/api/system/backup") => backup::export(state),
+        (&Method::Post, "/api/system/restore") => backup::restore(state, body),
         (&Method::Get, "/api/sms/forward") => sms_forward::get(state),
         (&Method::Put, "/api/sms/forward") => sms_forward::set(state, body),
         (&Method::Post, "/api/sms/forward/test") => sms_forward::test(state),
