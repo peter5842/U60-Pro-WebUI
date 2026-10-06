@@ -30,6 +30,7 @@ import {
   type UsbProbe,
 } from './usbView'
 import PowerScheduleCard from './PowerScheduleCard'
+import WatchdogCard, { ClockRow } from './WatchdogCard'
 
 // ── Read failures ─────────────────────────────────────────────────────────────
 
@@ -393,6 +394,7 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
           {device?.hardware && <Row label={t('Hardware')} value={device.hardware} mono />}
           <Row label={t('Kernel')} value={device?.kernel ?? <Unavailable />} mono />
           <Row label={t('Uptime')} value={device ? formatUptime(device.uptime_secs) : <Unavailable />} />
+          <ClockRow />
           <Row label={t('Load average')} value={device?.load_avg?.map((v) => v.toFixed(2)).join(', ') ?? <Unavailable />} mono />
           <Row label="IMEI" value={imei || <Unavailable />} mono />
           {imeiRes.status === 'error' && <p className="mt-1 text-meta text-ink3">{t('IMEI could not be read.')}</p>}
@@ -410,6 +412,8 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
       <UsbSection />
 
       <PowerScheduleCard />
+
+      <WatchdogCard />
 
       <Card title={t('Service controls')}>
         <div className="flex flex-wrap items-center gap-2">

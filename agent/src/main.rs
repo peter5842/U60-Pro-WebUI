@@ -14,6 +14,7 @@ mod handlers;
 mod lan;
 mod logging;
 mod mihomo;
+mod netsvc;
 mod network_ext;
 mod process;
 mod router;

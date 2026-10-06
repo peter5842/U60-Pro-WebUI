@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import StaticDhcpCard from './StaticDhcpCard'
 import { api } from '../../data/api'
 import { confirmLan } from '../../data/client'
 import { useResource, type PollResult } from '../../data/poll'
@@ -284,6 +285,7 @@ export default function RouterTab() {
   return (
     <div className="space-y-3">
       <LanSection />
+      <StaticDhcpCard />
       <DnsSection />
     </div>
   )

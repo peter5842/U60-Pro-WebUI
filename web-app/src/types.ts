@@ -653,3 +653,55 @@ export interface Blocklist {
   /** False when the Wi-Fi MAC filter is in allow-list mode (set in the stock UI). */
   available: boolean
 }
+
+export interface WatchdogSettings {
+  enabled: boolean
+  host?: string
+  interval_minutes?: number
+  failures?: number
+}
+
+export interface FirewallServices {
+  upnp: boolean
+  dmz_enabled: boolean
+  dmz_ip?: string
+  remote_web_access: boolean
+  wan_ping: boolean
+}
+
+export interface PortRule {
+  id: string
+  /** `forward`: a port range to the same ports on the device. `mapping`: one port to another port. */
+  kind: 'forward' | 'mapping'
+  ip: string
+  external_start: number
+  external_end: number
+  internal?: number
+  proto: 'tcp' | 'udp' | 'both'
+  comment: string
+}
+
+export interface PortRules {
+  forward_enabled: boolean
+  mapping_enabled: boolean
+  max_per_kind: number
+  rules: PortRule[]
+}
+
+export interface DhcpBindings {
+  enabled: boolean
+  max: number
+  lan_ip?: string
+  netmask?: string
+  bindings: { id: string; mac: string; ip: string; name?: string }[]
+}
+
+export interface ClockStatus {
+  local_time?: string
+  utc_offset_hours?: number
+  mode?: string
+  /** NITZ (from the mobile network), SNTP or MANUAL. */
+  source?: string
+  sntp_synced: boolean
+  servers: string[]
+}

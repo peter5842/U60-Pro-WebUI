@@ -183,11 +183,11 @@ test.describe('tabs', () => {
     const list = page.getByRole('tablist', { name: 'Network sections' })
     await expect(list).toBeVisible()
     const tabs = list.getByRole('tab')
-    await expect(tabs).toHaveCount(3)
+    await expect(tabs).toHaveCount(4)
     await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true')
     await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false')
     const stops = await tabs.evaluateAll((els) => els.map((e) => e.getAttribute('tabindex')))
-    expect(stops).toEqual(['0', '-1', '-1'])
+    expect(stops).toEqual(['0', '-1', '-1', '-1'])
     const panel = page.getByRole('tabpanel', { name: 'Clients' })
     await expect(panel).toBeVisible()
     await expect(panel).toHaveAttribute('tabindex', '0')
@@ -204,7 +204,7 @@ test.describe('tabs', () => {
   test('arrows wrap and move focus only; Enter and Space activate; Home/End jump', async ({ page }) => {
     await openApp(page, { group: 'network' })
     const list = page.getByRole('tablist', { name: 'Network sections' })
-    const [clients, wifi, router] = ['Clients', 'Wi-Fi', 'Router'].map((n) => list.getByRole('tab', { name: n }))
+    const [clients, wifi, router, ports] = ['Clients', 'Wi-Fi', 'Router', 'Ports'].map((n) => list.getByRole('tab', { name: n }))
 
     await clients.focus()
     await page.keyboard.press('ArrowRight')
@@ -221,13 +221,17 @@ test.describe('tabs', () => {
 
     await page.keyboard.press('ArrowRight')
     await expect(router).toBeFocused()
+    await page.keyboard.press('ArrowRight')
+    await expect(ports).toBeFocused()
     await page.keyboard.press('ArrowRight') // wraps to the first
     await expect(clients).toBeFocused()
     await page.keyboard.press('ArrowLeft') // wraps to the last
-    await expect(router).toBeFocused()
+    await expect(ports).toBeFocused()
     await page.keyboard.press('Home')
     await expect(clients).toBeFocused()
     await page.keyboard.press('End')
+    await expect(ports).toBeFocused()
+    await page.keyboard.press('ArrowLeft')
     await expect(router).toBeFocused()
     await expect(wifi).toHaveAttribute('aria-selected', 'true') // still: nothing activated yet
     await page.keyboard.press('Space')

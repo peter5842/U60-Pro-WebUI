@@ -19,7 +19,7 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 73 paths / 87 method+path pairs.
+(plus that the mock agent stays in step). 80 paths / 100 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
@@ -33,6 +33,7 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 | Modem | `PUT /api/data-usage/reset-day`, `PUT /api/modem/network-mode`; `GET+PUT /api/modem/data` (mobile data connect/disconnect; link state from `connect_status`, the PUT waits up to 8 s for it to settle); `GET+PUT /api/data-usage/limit` (monthly data limit in bytes plus alert percentage; a time-based limit set in the stock UI is reported read-only) |
 | Cell/band lock | `POST /api/cell/lock/nr`, `/api/cell/lock/lte`, `/api/cell/lock/reset`, `/api/cell/band/nr`, `/api/cell/band/lte`, `/api/cell/band/reset` |
 | Router | `GET+PUT /api/router/dns`, `/api/router/lan`, `/api/router/apn/mode`; `GET+POST+PUT /api/router/apn/profiles` (PUT edits a profile in place with the stock `modify_manu_apn`, carrying over `isEnable`/`cid`/`roamingPdpType` from the current entry); `POST /api/router/apn/profiles/delete`, `/api/router/apn/profiles/activate` |
+| Network services | `GET+PUT /api/router/watchdog` (stock connection watchdog; enabling waits 10 s because the firmware turns it back off when it cannot ping the address → 409); `GET+PUT /api/router/firewall` (UPnP, DMZ host, remote management, WAN ping); `GET+POST+PUT /api/router/port-forwards`, `POST /api/router/port-forwards/delete` (port forwarding = a range to the same ports, port mapping = one port to another; max 20 each, overlapping external ports rejected; rules read from uci `firewall` redirects); `GET+POST+PUT /api/router/dhcp-bindings`, `POST /api/router/dhcp-bindings/delete` (MAC-IP binding, max 10, applied by the firmware after a reboot); `GET /api/system/time` (clock status, read only) |
 | SMS | `POST /api/sms/list`, `/api/sms/send`, `/api/sms/delete`, `/api/sms/read` (delete falls back to direct SQLite for SIM-stored rows the firmware refuses) |
 | SIM | `GET /api/sim/info`, `/api/sim/imei` |
 | USB | `GET /api/usb/status`, `PUT /api/usb/mode`, `/api/usb/default`, `/api/usb/powerbank` |

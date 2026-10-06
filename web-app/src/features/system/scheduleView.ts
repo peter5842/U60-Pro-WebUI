@@ -57,3 +57,17 @@ export function scheduleChanges(saved: RebootSchedule, draft: RebootSchedule): P
   }
   return out
 }
+
+/** Mirrors agent/src/netsvc.rs watchdog checks. */
+export function validateWatchdog(host: string, interval: string, failures: string): { host?: string; interval?: string; failures?: string } {
+  const e: { host?: string; interval?: string; failures?: string } = {}
+  const h = host.trim()
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(h) && h.split('.').every((o) => Number(o) <= 255)
+  const domain = !/^[\d.]+$/.test(h) && /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(h)
+  if (!ipv4 && !domain) e.host = t('Enter an IPv4 address or a domain name')
+  const i = /^\d+$/.test(interval.trim()) ? Number(interval) : NaN
+  if (!(i >= 2 && i <= 1440)) e.interval = t('2 to 1440')
+  const f = /^\d+$/.test(failures.trim()) ? Number(failures) : NaN
+  if (!(f >= 1 && f <= 20)) e.failures = t('1 to 20')
+  return e
+}

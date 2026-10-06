@@ -12,6 +12,7 @@ use crate::clients;
 use crate::connection_logger;
 use crate::device_ext;
 use crate::handlers::{self, AppState};
+use crate::netsvc;
 use crate::network_ext;
 use crate::router;
 use crate::schedule;
@@ -352,6 +353,21 @@ pub fn route(
             handlers::data_usage_reset_day_set(state, body)
         }
         (&Method::Get, "/api/modem/capabilities") => cell::modem_capabilities(state),
+        (&Method::Get, "/api/router/watchdog") => netsvc::watchdog_get(state),
+        (&Method::Put, "/api/router/watchdog") => netsvc::watchdog_set(state, body),
+        (&Method::Get, "/api/router/firewall") => netsvc::firewall_get(state),
+        (&Method::Put, "/api/router/firewall") => netsvc::firewall_set(state, body),
+        (&Method::Get, "/api/router/port-forwards") => netsvc::port_rules_get(state),
+        (&Method::Post, "/api/router/port-forwards") => netsvc::port_rule_add(state, body),
+        (&Method::Put, "/api/router/port-forwards") => netsvc::port_rules_switch(state, body),
+        (&Method::Post, "/api/router/port-forwards/delete") => {
+            netsvc::port_rule_delete(state, body)
+        }
+        (&Method::Get, "/api/router/dhcp-bindings") => netsvc::bindings_get(state),
+        (&Method::Post, "/api/router/dhcp-bindings") => netsvc::binding_add(state, body),
+        (&Method::Put, "/api/router/dhcp-bindings") => netsvc::bindings_switch(state, body),
+        (&Method::Post, "/api/router/dhcp-bindings/delete") => netsvc::binding_delete(state, body),
+        (&Method::Get, "/api/system/time") => netsvc::time_get(state),
         (&Method::Put, "/api/network/clients/name") => clients::name_set(state, body),
         (&Method::Post, "/api/network/clients/kick") => clients::kick_post(state, body),
         (&Method::Get, "/api/network/blocklist") => clients::blocklist_get(state),

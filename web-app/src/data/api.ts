@@ -11,6 +11,7 @@ import { t } from '../i18n'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
 import { mapBlocklist } from './clients'
+import { mapClock, mapDhcpBindings, mapFirewall, mapPortRules, mapWatchdog } from './netsvc'
 import { mapRebootSchedule, mapSleep } from './schedule'
 import { mapDataLimit, mapMobileData } from './wwan'
 import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
@@ -20,6 +21,11 @@ import type {
   ApnModeState,
   ApnProfile,
   Blocklist,
+  ClockStatus,
+  DhcpBindings,
+  FirewallServices,
+  PortRules,
+  WatchdogSettings,
   AtSendResult,
   BatteryBspInfo,
   BatteryDetail,
@@ -961,6 +967,24 @@ export const api = {
   /** The agent waits for the firmware to apply the filter, so allow a longer timeout. */
   blocklistSet: (mac: string, blocked: boolean): Promise<Blocklist> =>
     req('PUT', '/api/network/blocklist', { mac, blocked }, undefined, 20_000).then(mapBlocklist),
+
+  // Router network services
+  watchdog: () => get('/api/router/watchdog').then(mapWatchdog),
+  /** Enabling waits ~10 s while the router checks that the address answers. */
+  watchdogSet: (body: Partial<WatchdogSettings>): Promise<WatchdogSettings> =>
+    req('PUT', '/api/router/watchdog', body, undefined, 25_000).then(mapWatchdog),
+  firewall: () => get('/api/router/firewall').then(mapFirewall),
+  firewallSet: (body: Partial<FirewallServices>): Promise<FirewallServices> => put('/api/router/firewall', body).then(mapFirewall),
+  portRules: () => get('/api/router/port-forwards').then(mapPortRules),
+  portRuleAdd: (body: Record<string, unknown>): Promise<PortRules> => post('/api/router/port-forwards', body).then(mapPortRules),
+  portRulesSwitch: (body: { forward_enabled?: boolean; mapping_enabled?: boolean }): Promise<PortRules> =>
+    put('/api/router/port-forwards', body).then(mapPortRules),
+  portRuleDelete: (kind: string, id: string): Promise<PortRules> => post('/api/router/port-forwards/delete', { kind, id }).then(mapPortRules),
+  dhcpBindings: () => get('/api/router/dhcp-bindings').then(mapDhcpBindings),
+  dhcpBindingAdd: (mac: string, ip: string): Promise<DhcpBindings> => post('/api/router/dhcp-bindings', { mac, ip }).then(mapDhcpBindings),
+  dhcpBindingsSwitch: (enabled: boolean): Promise<DhcpBindings> => put('/api/router/dhcp-bindings', { enabled }).then(mapDhcpBindings),
+  dhcpBindingDelete: (id: string): Promise<DhcpBindings> => post('/api/router/dhcp-bindings/delete', { id }).then(mapDhcpBindings),
+  clock: (): Promise<ClockStatus> => get('/api/system/time').then(mapClock),
 
   // WiFi
   wifiStatus: () => get('/api/wifi/status').then(mapWifi),

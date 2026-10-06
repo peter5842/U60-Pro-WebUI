@@ -437,6 +437,15 @@ export const rebootSchedule = (over?: Json): Json =>
 
 export const blocklist = (over?: Json): Json => merge({ blocked: [], max: 32, available: true }, over)
 
+export const watchdog = (over?: Json): Json => merge({ enabled: false, host: null, interval_minutes: 2, failures: 3 }, over)
+export const firewall = (over?: Json): Json =>
+  merge({ upnp: true, dmz_enabled: false, dmz_ip: null, remote_web_access: false, wan_ping: false }, over)
+export const portRules = (over?: Json): Json => merge({ forward_enabled: false, mapping_enabled: false, max_per_kind: 20, rules: [] }, over)
+export const dhcpBindings = (over?: Json): Json =>
+  merge({ enabled: true, max: 10, lan_ip: '192.168.0.1', netmask: '255.255.255.0', bindings: [] }, over)
+export const clock = (over?: Json): Json =>
+  merge({ local_time: '2026-10-06 22:49:15', utc_offset_hours: 8, mode: 'auto', source: 'NITZ', sntp_synced: false, servers: [] }, over)
+
 export const apnMode = (over?: Json): Json => merge({ apn_mode: 1 }, over)
 
 export function apnProfiles(over?: { apnListArray?: Json[] }): Json {

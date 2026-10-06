@@ -4,8 +4,9 @@ import { TabPanel, Tabs } from '../../ui/Tabs'
 import ClientsTab from './ClientsTab'
 import WifiTab from './WifiTab'
 import RouterTab from './RouterTab'
+import PortsTab from './PortsTab'
 
-type Tab = 'clients' | 'wifi' | 'router'
+type Tab = 'clients' | 'wifi' | 'router' | 'ports'
 
 export default function NetworkGroup() {
   const [tab, setTab] = useState<Tab>('clients')
@@ -22,6 +23,7 @@ export default function NetworkGroup() {
           { id: 'clients', label: t('Clients') },
           { id: 'wifi', label: 'Wi-Fi' },
           { id: 'router', label: t('Router') },
+          { id: 'ports', label: t('Ports') },
         ]}
         active={tab}
         onChange={setTab}
@@ -33,6 +35,7 @@ export default function NetworkGroup() {
         {tab === 'clients' && <ClientsTab />}
         {tab === 'wifi' && <WifiTab />}
         {tab === 'router' && <RouterTab />}
+        {tab === 'ports' && <PortsTab />}
       </TabPanel>
     </div>
   )

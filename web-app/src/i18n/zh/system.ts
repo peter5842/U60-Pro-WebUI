@@ -320,4 +320,24 @@ export const system: Record<string, string> = {
   'Every {day} {when}': '每{day} {when}',
   'Every day {when}': '每天 {when}',
   'Every {n} days after boot {when}': '开机后每 {n} 天，{when}',
+
+  // Connection watchdog and clock
+  'Connection watchdog': '断网看门狗',
+  'The router pings an address regularly and reboots itself when the pings keep failing, which recovers a stuck mobile connection. After 5 frequent reboots the firmware turns it off.':
+    '路由器定期 ping 一个地址，连续失败时自动重启，用来恢复卡死的移动网络连接。如果频繁重启超过 5 次，固件会自动关闭此功能。',
+  'Address to ping': 'ping 的地址',
+  'Interval (minutes)': '间隔（分钟）',
+  'Reboot after failures': '连续失败几次后重启',
+  'Checking that the address answers…': '正在检查该地址是否能 ping 通…',
+  'Watchdog on': '已开启看门狗',
+  'Watchdog off': '已关闭看门狗',
+  'Failed to save the watchdog': '保存看门狗设置失败',
+  'The connection watchdog could not be read.': '无法读取看门狗设置。',
+  'Enter an IPv4 address or a domain name': '请输入 IPv4 地址或域名',
+  '2 to 1440': '范围 2 至 1440',
+  '1 to 20': '范围 1 至 20',
+  'Router clock': '路由器时钟',
+  'from the mobile network': '来自移动网络',
+  'from NTP servers': '来自 NTP 服务器',
+  'set by hand': '手动设置',
 }

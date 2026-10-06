@@ -1431,6 +1431,163 @@ def csv_download(name, text):
     return handler
 
 
+# ── Router network services (netsvc.rs) ──────────────────────────────────────
+
+LAN_PREFIX = "192.168.0."
+
+
+def _lan_host(ip, label):
+    m = re.match(r"^192\.168\.0\.(\d{1,3})$", str(ip or "").strip())
+    if not m or not 2 <= int(m.group(1)) <= 254:
+        raise ApiError(400, f"{label}: enter a device address in 192.168.0.2-254")
+    return ip.strip()
+
+
+def watchdog():
+    return dict(STATE["netsvc"]["watchdog"])
+
+
+def put_watchdog(body):
+    obj = need_object(body, None)
+    w = STATE["netsvc"]["watchdog"]
+    if not isinstance(obj.get("enabled"), bool):
+        raise ApiError(400, "enabled is required")
+    if obj["enabled"]:
+        host = obj.get("host", w["host"])
+        if not isinstance(host, str) or not re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z0-9-]+$", host):
+            raise ApiError(400, "host must be an IPv4 address or a domain name")
+        interval = obj.get("interval_minutes", w["interval_minutes"])
+        failures = obj.get("failures", w["failures"])
+        if not (_is_int(interval) and 2 <= interval <= 1440) or not (_is_int(failures) and 1 <= failures <= 20):
+            raise ApiError(400, "interval_minutes must be 2-1440 and failures 1-20")
+        w.update(enabled=True, host=host, interval_minutes=interval, failures=failures)
+    else:
+        w["enabled"] = False
+    return watchdog()
+
+
+def firewall_services():
+    return dict(STATE["netsvc"]["firewall"])
+
+
+def put_firewall_services(body):
+    obj = need_object(body, None)
+    f = STATE["netsvc"]["firewall"]
+    for key, value in obj.items():
+        if key in ("upnp", "dmz_enabled", "remote_web_access", "wan_ping"):
+            if not isinstance(value, bool):
+                raise ApiError(400, f"{key} must be a boolean")
+        elif key == "dmz_ip":
+            _lan_host(value, "DMZ")
+        else:
+            raise ApiError(400, f"unknown field {key}")
+    if obj.get("dmz_enabled") and not (obj.get("dmz_ip") or f["dmz_ip"]):
+        raise ApiError(400, "DMZ: enter a device address")
+    f.update(obj)
+    return firewall_services()
+
+
+def port_rules():
+    n = STATE["netsvc"]
+    return {"forward_enabled": n["forward_enabled"], "mapping_enabled": n["mapping_enabled"],
+            "max_per_kind": 20, "rules": list(n["rules"])}
+
+
+def post_port_rule(body):
+    obj = need_object(body, None)
+    kind = obj.get("kind")
+    if kind not in ("forward", "mapping"):
+        raise ApiError(400, "kind must be forward or mapping")
+    ip = _lan_host(obj.get("ip"), "ip")
+    comment = obj.get("comment")
+    if not (isinstance(comment, str) and re.match(r"^[0-9a-zA-Z!#()+\-./%=?@^_{|}~]{1,32}$", comment)):
+        raise ApiError(400, "comment must be 1-32 characters: letters, digits and !#()+-./%=?@^_{|}~")
+    start = obj.get("external_start")
+    end = obj.get("external_end", start) if kind == "forward" else start
+    internal = obj.get("internal") if kind == "mapping" else None
+    top = 65535 if kind == "forward" else 65000
+    if not (_is_int(start) and _is_int(end) and 1 <= start <= end <= top):
+        raise ApiError(400, "invalid port range")
+    if kind == "mapping" and not (_is_int(internal) and 1 <= internal <= top):
+        raise ApiError(400, "internal is required")
+    proto = obj.get("proto", "both")
+    if proto not in ("tcp", "udp", "both"):
+        raise ApiError(400, "proto must be tcp, udp or both")
+    n = STATE["netsvc"]
+    for r in n["rules"]:
+        shares = "both" in (proto, r["proto"]) or proto == r["proto"]
+        if shares and start <= r["external_end"] and r["external_start"] <= end:
+            raise ApiError(409, f"external port {r['external_start']}-{r['external_end']} overlaps the rule \"{r['comment']}\"")
+    n["next_id"] += 1
+    n["rules"].append({"id": f"cfg{n['next_id']:06x}", "kind": kind, "ip": ip, "external_start": start,
+                       "external_end": end, "internal": internal, "proto": proto, "comment": comment})
+    return port_rules()
+
+
+def put_port_rules(body):
+    obj = need_object(body, None)
+    for key in obj:
+        if key not in ("forward_enabled", "mapping_enabled") or not isinstance(obj[key], bool):
+            raise ApiError(400, f"invalid field {key}")
+    STATE["netsvc"].update(obj)
+    return port_rules()
+
+
+def post_port_rule_delete(body):
+    obj = need_object(body, None)
+    n = STATE["netsvc"]
+    before = len(n["rules"])
+    n["rules"] = [r for r in n["rules"] if not (r["id"] == obj.get("id") and r["kind"] == obj.get("kind"))]
+    if len(n["rules"]) == before:
+        raise ApiError(404, "no such rule")
+    return port_rules()
+
+
+def dhcp_bindings():
+    n = STATE["netsvc"]
+    return {"enabled": n["bind_enabled"], "max": 10, "lan_ip": "192.168.0.1", "netmask": "255.255.255.0",
+            "bindings": list(n["bindings"])}
+
+
+def post_dhcp_binding(body):
+    obj = need_object(body, None)
+    mac = _mac(obj)
+    ip = _lan_host(obj.get("ip"), "ip")
+    n = STATE["netsvc"]
+    if len(n["bindings"]) >= 10:
+        raise ApiError(400, "at most 10 bindings")
+    if any(b["mac"] == mac for b in n["bindings"]):
+        raise ApiError(409, "that device already has a fixed address")
+    if any(b["ip"] == ip for b in n["bindings"]):
+        raise ApiError(409, f"{ip} is already bound to another device")
+    n["next_id"] += 1
+    n["bindings"].append({"id": f"cfg{n['next_id']:06x}", "mac": mac, "ip": ip, "name": None})
+    return dhcp_bindings()
+
+
+def put_dhcp_bindings(body):
+    obj = need_object(body, None)
+    if set(obj) != {"enabled"} or not isinstance(obj["enabled"], bool):
+        raise ApiError(400, "enabled is required")
+    STATE["netsvc"]["bind_enabled"] = obj["enabled"]
+    return dhcp_bindings()
+
+
+def post_dhcp_binding_delete(body):
+    obj = need_object(body, None)
+    n = STATE["netsvc"]
+    before = len(n["bindings"])
+    n["bindings"] = [b for b in n["bindings"] if b["id"] != obj.get("id")]
+    if len(n["bindings"]) == before:
+        raise ApiError(404, "no such binding")
+    return dhcp_bindings()
+
+
+def clock():
+    return {"local_time": time.strftime("%Y-%m-%d %H:%M:%S"), "utc_offset_hours": 8.0, "mode": "auto",
+            "source": "NITZ", "sntp_synced": False, "servers": ["time.windows.com", "pool.ntp.org"]}
+
+
 # ── Sleep timer and scheduled reboot ─────────────────────────────────────────
 
 SLEEP_MINUTES = [-1, 5, 10, 20, 30, 60, 120]
@@ -1826,6 +1983,11 @@ def initial_state(scenario):
         "power": {"sleep": -1, "reboot": {"enabled": False, "mode": "weekly", "weekday": 2, "interval_days": 1,
                                          "hour": 2, "minute": 0, "window_hours": 2}},
         "client_ctl": {"names": {}, "blocked": set()},
+        "netsvc": {"watchdog": {"enabled": False, "host": None, "interval_minutes": 2, "failures": 3},
+                   "firewall": {"upnp": True, "dmz_enabled": False, "dmz_ip": None, "remote_web_access": False,
+                                "wan_ping": False},
+                   "forward_enabled": False, "mapping_enabled": False, "rules": [], "bind_enabled": True,
+                   "bindings": [], "next_id": 0x0d92c0},
         "wwan": {"connected": True, "limit": {"enabled": False, "bytes": 322122547200, "alert": 80}},
     }
 
@@ -1853,6 +2015,10 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/router/watchdog": put_watchdog,
+    "/api/router/firewall": put_firewall_services,
+    "/api/router/port-forwards": put_port_rules,
+    "/api/router/dhcp-bindings": put_dhcp_bindings,
     "/api/router/apn/profiles": put_apn_edit,
     "/api/network/clients/name": put_client_name,
     "/api/network/blocklist": put_blocklist,
@@ -1878,6 +2044,11 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/router/watchdog": watchdog,
+    "/api/router/firewall": firewall_services,
+    "/api/router/port-forwards": port_rules,
+    "/api/router/dhcp-bindings": dhcp_bindings,
+    "/api/system/time": clock,
     "/api/network/blocklist": blocklist,
     "/api/device/sleep": sleep_setting,
     "/api/device/reboot-schedule": reboot_schedule,
@@ -1924,6 +2095,10 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/router/port-forwards": post_port_rule,
+    "/api/router/port-forwards/delete": post_port_rule_delete,
+    "/api/router/dhcp-bindings": post_dhcp_binding,
+    "/api/router/dhcp-bindings/delete": post_dhcp_binding_delete,
     "/api/network/clients/kick": post_client_kick,
     "/api/proxy/service": post_proxy_service,
     "/api/proxy/subscriptions": post_proxy_subscription_add,
