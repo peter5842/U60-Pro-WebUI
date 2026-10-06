@@ -47,6 +47,7 @@ pub struct AppState {
     pub charge_limit: Arc<ChargeLimitEnforcer>,
     pub signal_logger: Arc<SignalLogger>,
     pub connection_logger: Arc<ConnectionLogger>,
+    pub mihomo: Arc<crate::mihomo::Manager>,
 }
 
 impl AppState {
@@ -67,6 +68,7 @@ impl AppState {
             charge_limit: Arc::new(ChargeLimitEnforcer::new()),
             signal_logger: Arc::new(SignalLogger::new()),
             connection_logger: Arc::new(ConnectionLogger::new()),
+            mihomo: Arc::new(crate::mihomo::Manager::new()),
         }
     }
 }

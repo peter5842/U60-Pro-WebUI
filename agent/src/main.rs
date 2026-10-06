@@ -12,6 +12,7 @@ mod event_bus;
 mod handlers;
 mod lan;
 mod logging;
+mod mihomo;
 mod network_ext;
 mod process;
 mod router;
@@ -76,6 +77,7 @@ fn main() {
     event_bus.start();
 
     state.charge_limit.start(charger_rx);
+    state.mihomo.start_watchdog();
 
     // Apply persisted TTL settings if they exist
     let _ = std::process::Command::new("sh")

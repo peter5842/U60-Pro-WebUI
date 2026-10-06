@@ -96,6 +96,7 @@ const DESTRUCTIVE_PATHS: &[&str] = &[
     "/api/device/reboot",
     "/api/device/shutdown",
     "/api/system/kill-bloat",
+    "/api/proxy/subscriptions/delete",
 ];
 
 fn cors_headers(origin: Option<&str>) -> Vec<Header> {
@@ -166,6 +167,18 @@ fn handle_request(mut request: Request, state: &AppState) {
         for h in cors_headers(origin_ref) {
             response = response.with_header(h);
         }
+        let _ = request.respond(response);
+        return;
+    }
+
+    // Proxy auto-config for LAN devices. Public by design: browsers and OSes
+    // fetch it without credentials, and it only names the proxy address.
+    if method == Method::Get && path == "/proxy.pac" {
+        let response = Response::from_string(state.mihomo.pac())
+            .with_header(
+                Header::from_bytes("Content-Type", "application/x-ns-proxy-autoconfig").unwrap(),
+            )
+            .with_header(Header::from_bytes("Cache-Control", "no-store").unwrap());
         let _ = request.respond(response);
         return;
     }
@@ -387,6 +400,22 @@ pub fn route(
         }
         (&Method::Post, "/api/logger/connection/stop") => connection_logger::stop_logging(state),
         (&Method::Get, "/api/logger/connection/status") => connection_logger::status(state),
+        // Proxy (mihomo)
+        (&Method::Get, "/api/proxy/status") => state.mihomo.status(),
+        (&Method::Put, "/api/proxy/settings") => state.mihomo.settings_set(body),
+        (&Method::Post, "/api/proxy/service") => state.mihomo.service(body),
+        (&Method::Get, "/api/proxy/subscriptions") => state.mihomo.subscriptions(),
+        (&Method::Post, "/api/proxy/subscriptions") => state.mihomo.subscription_add(body),
+        (&Method::Put, "/api/proxy/subscriptions") => state.mihomo.subscription_edit(body),
+        (&Method::Post, "/api/proxy/subscriptions/delete") => {
+            state.mihomo.subscription_delete(body)
+        }
+        (&Method::Post, "/api/proxy/subscriptions/update") => {
+            state.mihomo.subscription_refresh(body)
+        }
+        (&Method::Get, "/api/proxy/groups") => state.mihomo.groups(),
+        (&Method::Put, "/api/proxy/groups") => state.mihomo.group_select(body),
+        (&Method::Post, "/api/proxy/delay") => state.mihomo.delay(body),
         // Fallback
         _ => (404, json!({"ok": false, "error": "not found"})),
     }
