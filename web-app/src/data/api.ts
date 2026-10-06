@@ -1032,15 +1032,23 @@ export const api = {
   proxyService: (action: 'start' | 'stop' | 'restart') =>
     req('POST', '/api/proxy/service', { action }, undefined, 45_000).then(mapProxyStatus),
   proxySubscriptions: () => get('/api/proxy/subscriptions').then(mapProxySubscriptions),
-  proxySubscriptionAdd: (body: { name: string; url: string; interval_hours: number }) =>
-    req('POST', '/api/proxy/subscriptions', body, undefined, 45_000),
-  proxySubscriptionEdit: (body: { id: string; name?: string; url?: string; enabled?: boolean; interval_hours?: number }) =>
-    req('PUT', '/api/proxy/subscriptions', body, undefined, 45_000),
+  proxySubscriptionAdd: (body: { name: string; url: string; interval_hours: number; use_config: boolean }) =>
+    req('POST', '/api/proxy/subscriptions', body, undefined, 90_000),
+  proxySubscriptionEdit: (body: {
+    id: string
+    name?: string
+    url?: string
+    enabled?: boolean
+    interval_hours?: number
+    use_config?: boolean
+  }) => req('PUT', '/api/proxy/subscriptions', body, undefined, 90_000),
   proxySubscriptionDelete: (id: string) =>
     req('POST', '/api/proxy/subscriptions/delete', { id }, { 'X-Confirm': 'true' }, 45_000),
   proxySubscriptionUpdate: (id?: string) =>
     req('POST', '/api/proxy/subscriptions/update', id ? { id } : {}, undefined, 180_000),
   proxyGroups: () => get('/api/proxy/groups').then(mapProxyGroups),
-  proxySelect: (proxy: string) => put('/api/proxy/groups', { group: 'PROXY', proxy }),
-  proxyDelay: () => req('POST', '/api/proxy/delay', {}, undefined, 30_000).then(mapProxyDelays),
+  proxySelect: (group: string, proxy: string) => put('/api/proxy/groups', { group, proxy }),
+  /** One group's members, or every node when `group` is omitted. */
+  proxyDelay: (group?: string) =>
+    req('POST', '/api/proxy/delay', group ? { group } : {}, undefined, 120_000).then(mapProxyDelays),
 }

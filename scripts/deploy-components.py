@@ -152,6 +152,16 @@ class Transport:
         return response.get('data', {})
 
 
+def verify_unauthenticated(transport):
+    """The agent answers and refuses an unauthenticated read (for --keep-credentials)."""
+    address = transport.shell('uci -q get zwrt_router.network.lan_ipaddr')
+    ip = ipaddress.IPv4Address(address)
+    if not ip.is_private: raise ValueError('Firmware LAN address is not private IPv4')
+    code = transport.shell(f"/usr/bin/curl --silent --output /dev/null --write-out '%{{http_code}}' "
+                           f"--connect-timeout 5 --max-time 10 http://{address}:9090/api/device || true")
+    if code.strip() != '401': raise RuntimeError('Agent verification failed')
+
+
 def verify_credentials(transport, password, pin):
     token = transport.api('/api/auth/login', {'password': password})['token']
     device = transport.api('/api/device', token=token)
@@ -287,6 +297,7 @@ def prepare_only(args):
 def deploy(args):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}', args.gateway): raise ValueError('Invalid gateway')
     if not args.agent and not args.dashboard and not args.harden: raise ValueError('Select at least one component')
+    keep_credentials = getattr(args, 'keep_credentials', False)
     # Finish all local preparation before contacting or mutating a device.
     prepared = {}
     expanded = 0
@@ -294,14 +305,15 @@ def deploy(args):
         data = read_limited(args.agent)
         if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or int.from_bytes(data[18:20], 'little') != 183:
             raise ValueError('Agent must be an aarch64 ELF64 little-endian executable')
-        password = os.environ.get('ZTE_AGENT_PASSWORD') or getpass.getpass('Agent password: ')
-        pin = os.environ.get('ZTE_AGENT_PIN', '')
-        spec = importlib.util.spec_from_file_location('startup', ROOT / 'scripts/render-agent-startup.py')
-        startup = importlib.util.module_from_spec(spec); spec.loader.exec_module(startup)
-        script = startup.render(password, pin).encode()
-        run(['sh', '-n'], script)
         prepared['agent'] = data
-        prepared['startup'] = script
+        if not keep_credentials:
+            password = os.environ.get('ZTE_AGENT_PASSWORD') or getpass.getpass('Agent password: ')
+            pin = os.environ.get('ZTE_AGENT_PIN', '')
+            spec = importlib.util.spec_from_file_location('startup', ROOT / 'scripts/render-agent-startup.py')
+            startup = importlib.util.module_from_spec(spec); spec.loader.exec_module(startup)
+            script = startup.render(password, pin).encode()
+            run(['sh', '-n'], script)
+            prepared['startup'] = script
     if args.dashboard:
         expanded = validate_dashboard(args.dashboard)
         prepared['dashboard'] = read_limited(args.dashboard)
@@ -329,6 +341,9 @@ def deploy(args):
     if free * 1024 < required or tmp_free * 1024 < payload + 16 * 1024 * 1024 or etc_free < 2048:
         raise RuntimeError('Insufficient storage for deployment and rollback')
     if args.dashboard and not args.harden: transport.shell('test -x /data/bin/dashboard-uhttpd && test -x /data/local/tmp/start_dashboard.sh')
+    if args.agent and keep_credentials:
+        # Reuse the installed startup script (and so the password) as-is.
+        transport.shell('test -s /data/local/tmp/start_zte_agent.sh && sh -n /data/local/tmp/start_zte_agent.sh')
     if args.dry_run:
         print('Dry run passed: identity, local artifacts and storage checked; no deployment writes.')
         return
@@ -348,16 +363,20 @@ def deploy(args):
         if args.agent:
             # Complete and hash-check both staged files before stopping the process.
             transport.push(prepared['agent'], '/data/zte-agent.staged', True)
-            transport.push(prepared['startup'], '/data/local/tmp/start_zte_agent.sh.staged', True)
-            transport.shell('set -e; sh -n /data/local/tmp/start_zte_agent.sh.staged; killall zte-agent 2>/dev/null || true')
-            transport.shell('set -e; mv /data/zte-agent.staged /data/zte-agent; mv /data/local/tmp/start_zte_agent.sh.staged /data/local/tmp/start_zte_agent.sh')
+            if 'startup' in prepared:
+                transport.push(prepared['startup'], '/data/local/tmp/start_zte_agent.sh.staged', True)
+                transport.shell('set -e; sh -n /data/local/tmp/start_zte_agent.sh.staged; killall zte-agent 2>/dev/null || true')
+                transport.shell('set -e; mv /data/zte-agent.staged /data/zte-agent; mv /data/local/tmp/start_zte_agent.sh.staged /data/local/tmp/start_zte_agent.sh')
+            else:
+                transport.shell('set -e; killall zte-agent 2>/dev/null || true; mv /data/zte-agent.staged /data/zte-agent')
             transport.push((ROOT / 'scripts/device/update-rc-local.sh').read_bytes(), '/data/local/tmp/open-u60-rc-update.sh', True)
             transport.shell("sh /data/local/tmp/open-u60-rc-update.sh 'sh /data/local/tmp/start_zte_agent.sh'")
             transport.shell('sh /data/local/tmp/start_zte_agent.sh')
             for attempt in range(5):
                 time.sleep(1)
                 try:
-                    verify_credentials(transport, password, pin)
+                    if keep_credentials: verify_unauthenticated(transport)
+                    else: verify_credentials(transport, password, pin)
                     break
                 except (RuntimeError, KeyError):
                     if attempt == 4: raise
@@ -404,6 +423,8 @@ def main():
     parser.add_argument('--gateway', default=os.environ.get('ZTE_GATEWAY', '192.168.0.1'))
     parser.add_argument('--adb-serial')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--keep-credentials', action='store_true',
+                        help='Replace only the agent binary; keep the installed password/PIN startup script')
     try:
         args = parser.parse_args()
         if args.prepare_only: prepare_only(args)

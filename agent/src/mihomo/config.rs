@@ -63,6 +63,9 @@ pub struct Settings {
     /// Capture LAN traffic transparently through the `mihomo` TUN device.
     pub tun: bool,
     pub mixed_port: u16,
+    /// Subscription whose own full config (groups, rules, rule sets) is used.
+    /// `None`: the managed config (subscriptions as node providers + `preset`).
+    pub profile: Option<String>,
 }
 
 impl Default for Settings {
@@ -73,8 +76,36 @@ impl Default for Settings {
             preset: Preset::BypassCn,
             tun: false,
             mixed_port: DEFAULT_PORT,
+            profile: None,
         }
     }
+}
+
+/// Traffic and expiry from the provider's `subscription-userinfo` header.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Usage {
+    pub upload: Option<u64>,
+    pub download: Option<u64>,
+    pub total: Option<u64>,
+    pub expire: Option<u64>,
+}
+
+/// What the agent learnt the last time it downloaded a subscription itself
+/// (only for subscriptions used as the full config).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fetched {
+    /// Unix seconds.
+    pub at: u64,
+    /// Has `proxy-groups` and `rules`, i.e. usable as a full config.
+    pub full: bool,
+    #[serde(default)]
+    pub proxies: u32,
+    #[serde(default)]
+    pub groups: u32,
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +118,8 @@ pub struct Subscription {
     pub enabled: bool,
     /// Auto-update interval; 0 = manual updates only.
     pub interval_hours: u32,
+    #[serde(default)]
+    pub fetched: Option<Fetched>,
 }
 
 impl Subscription {
@@ -210,8 +243,19 @@ fn preset_rules(preset: Preset) -> Vec<&'static str> {
 }
 
 /// Render the full mihomo config for `state`. `lan_ip` is the router's LAN
-/// address; the proxy listener binds only to it.
-pub fn render(state: &State, lan_ip: &str) -> Value {
+/// address; the proxy listener binds only to it. With a subscription profile,
+/// `profile` is that subscription's parsed config.
+pub fn render(state: &State, lan_ip: &str, profile: Option<&Value>) -> Result<Value, String> {
+    let mut config = match profile {
+        Some(base) => sanitize_profile(base)?,
+        None => managed(state),
+    };
+    apply_runtime(&mut config, state, lan_ip);
+    Ok(config)
+}
+
+/// The agent's own config: subscriptions as node providers plus a rule preset.
+fn managed(state: &State) -> Value {
     let s = &state.settings;
     let enabled: Vec<&Subscription> = state.subscriptions.iter().filter(|x| x.enabled).collect();
 
@@ -243,21 +287,11 @@ pub fn render(state: &State, lan_ip: &str) -> Value {
         ])
     };
 
-    let mut config = json!({
-        "mixed-port": s.mixed_port,
-        "allow-lan": true,
-        "bind-address": lan_ip,
-        "mode": s.mode.as_str(),
-        "log-level": "warning",
+    json!({
         "ipv6": false,
         "unified-delay": true,
         "tcp-concurrent": true,
-        "find-process-mode": "off",
-        "external-controller": CONTROLLER_ADDR,
-        "secret": state.secret,
         "geodata-mode": false,
-        "geo-auto-update": false,
-        "profile": {"store-selected": true},
         "dns": {
             "enable": true,
             "ipv6": false,
@@ -267,10 +301,89 @@ pub fn render(state: &State, lan_ip: &str) -> Value {
         "proxy-providers": Value::Object(providers),
         "proxy-groups": groups,
         "rules": preset_rules(s.preset),
-    });
+    })
+}
 
+/// Keys a subscription config may carry that must not reach the router:
+/// extra listeners, public controllers/UIs, its own TUN/redirect plumbing,
+/// proxy auth the PAC cannot supply, and interface pinning.
+const PROFILE_DROP: &[&str] = &[
+    "port",
+    "socks-port",
+    "redir-port",
+    "tproxy-port",
+    "mixed-port",
+    "listeners",
+    "tunnels",
+    "external-controller",
+    "external-controller-tls",
+    "external-controller-unix",
+    "external-controller-pipe",
+    "external-controller-cors",
+    "external-ui",
+    "external-ui-url",
+    "external-ui-name",
+    "external-doh-server",
+    "secret",
+    "authentication",
+    "skip-auth-prefixes",
+    "lan-allowed-ips",
+    "lan-disallowed-ips",
+    "bind-address",
+    "interface-name",
+    "routing-mark",
+    "tun",
+    "iptables",
+    "ebpf",
+    "auto-redir",
+];
+
+/// A subscription's own config, minus everything in `PROFILE_DROP` and any
+/// DNS listener (port 53 belongs to dnsmasq). Groups, rules, rule sets, DNS
+/// upstreams and sniffer settings are kept as the provider wrote them.
+pub fn sanitize_profile(base: &Value) -> Result<Value, String> {
+    let mut config = base.clone();
+    let obj = config
+        .as_object_mut()
+        .ok_or("the subscription is not a YAML mapping")?;
+    if !obj.get("proxy-groups").is_some_and(Value::is_array)
+        || !obj.get("rules").is_some_and(Value::is_array)
+    {
+        return Err(
+            "the subscription has no proxy-groups/rules, so it cannot be used as a full config"
+                .into(),
+        );
+    }
+    for key in PROFILE_DROP {
+        obj.remove(*key);
+    }
+    if let Some(dns) = obj.get_mut("dns").and_then(Value::as_object_mut) {
+        dns.remove("listen");
+    }
+    Ok(config)
+}
+
+/// Settings the agent always owns, whatever the config source.
+fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
+    let s = &state.settings;
+    let obj = config.as_object_mut().expect("config is an object");
+    obj.insert("mixed-port".into(), json!(s.mixed_port));
+    obj.insert("allow-lan".into(), json!(true));
+    obj.insert("bind-address".into(), json!(lan_ip));
+    obj.insert("mode".into(), json!(s.mode.as_str()));
+    obj.insert("log-level".into(), json!("warning"));
+    obj.insert("find-process-mode".into(), json!("off"));
+    obj.insert("external-controller".into(), json!(CONTROLLER_ADDR));
+    obj.insert("secret".into(), json!(state.secret));
+    // Rule data is installed and updated by scripts/deploy-mihomo.sh.
+    obj.insert("geo-auto-update".into(), json!(false));
+    let profile = obj.entry("profile").or_insert_with(|| json!({}));
+    if let Some(p) = profile.as_object_mut() {
+        p.insert("store-selected".into(), json!(true));
+    }
+
+    obj.remove("tun");
     if s.tun {
-        let obj = config.as_object_mut().expect("config is an object");
         obj.insert(
             "tun".into(),
             json!({
@@ -288,19 +401,24 @@ pub fn render(state: &State, lan_ip: &str) -> Value {
                 "dns-hijack": [],
             }),
         );
-        obj.insert(
-            "sniffer".into(),
-            json!({
-                "enable": true,
-                "sniff": {
-                    "HTTP": {"ports": [80, "8080-8880"], "override-destination": true},
-                    "TLS": {"ports": [443, 8443]},
-                    "QUIC": {"ports": [443]},
-                },
-            }),
-        );
+        let sniffing = obj
+            .get("sniffer")
+            .and_then(|v| v["enable"].as_bool())
+            .unwrap_or(false);
+        if !sniffing {
+            obj.insert(
+                "sniffer".into(),
+                json!({
+                    "enable": true,
+                    "sniff": {
+                        "HTTP": {"ports": [80, "8080-8880"], "override-destination": true},
+                        "TLS": {"ports": [443, 8443]},
+                        "QUIC": {"ports": [443]},
+                    },
+                }),
+            );
+        }
     }
-    config
 }
 
 #[cfg(test)]
@@ -314,13 +432,14 @@ mod tests {
             url: format!("https://example.com/{id}?token=secret"),
             enabled,
             interval_hours: 24,
+            fetched: None,
         }
     }
 
     #[test]
     fn no_subscriptions_renders_direct_only_proxy_group() {
         let state = State::default();
-        let c = render(&state, "192.168.0.1");
+        let c = render(&state, "192.168.0.1", None).unwrap();
         assert_eq!(c["proxy-groups"].as_array().unwrap().len(), 1);
         assert_eq!(c["proxy-groups"][0]["proxies"], json!(["DIRECT"]));
         assert!(c["proxy-providers"].as_object().unwrap().is_empty());
@@ -335,7 +454,7 @@ mod tests {
             subscriptions: vec![sub("aaaa0001", true), sub("aaaa0002", false)],
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1");
+        let c = render(&state, "192.168.0.1", None).unwrap();
         let providers = c["proxy-providers"].as_object().unwrap();
         assert_eq!(providers.len(), 1);
         let p = &providers["sub-aaaa0001"];
@@ -354,11 +473,86 @@ mod tests {
             },
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1");
+        let c = render(&state, "192.168.0.1", None).unwrap();
         assert_eq!(c["tun"]["device"], TUN_DEVICE);
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
         assert_eq!(c["tun"]["dns-hijack"], json!([]));
         assert_eq!(c["sniffer"]["enable"], true);
+    }
+
+    fn airport() -> Value {
+        json!({
+            "mixed-port": 7890, "socks-port": 7891, "port": 7892,
+            "allow-lan": true, "bind-address": "*", "authentication": ["u:p"],
+            "external-controller": "127.0.0.1:9090", "secret": "theirs", "external-ui": "ui",
+            "log-level": "error", "find-process-mode": "always", "geodata-mode": true,
+            "tun": {"enable": true, "stack": "system", "dns-hijack": ["any:53"]},
+            "dns": {"enable": true, "listen": "0.0.0.0:53", "enhanced-mode": "fake-ip", "nameserver": ["https://dns.example/dns-query"]},
+            "sniffer": {"enable": true, "sniff": {"TLS": {"ports": [443]}}},
+            "proxies": [{"name": "HK", "type": "ss"}],
+            "proxy-groups": [{"name": "节点选择", "type": "select", "proxies": ["HK"]}],
+            "rule-providers": {"apple": {"type": "http", "behavior": "classical"}},
+            "rules": ["RULE-SET,apple,节点选择", "MATCH,节点选择"],
+        })
+    }
+
+    #[test]
+    fn profile_keeps_groups_rules_and_dns_upstreams() {
+        let state = State {
+            secret: "s".into(),
+            ..Default::default()
+        };
+        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        assert_eq!(c["proxy-groups"][0]["name"], "节点选择");
+        assert_eq!(c["rules"][1], "MATCH,节点选择");
+        assert!(c["rule-providers"]["apple"].is_object());
+        assert_eq!(c["dns"]["enhanced-mode"], "fake-ip");
+        assert_eq!(c["dns"]["nameserver"][0], "https://dns.example/dns-query");
+        assert_eq!(c["geodata-mode"], true);
+    }
+
+    #[test]
+    fn profile_cannot_open_listeners_or_take_over_the_router() {
+        let state = State {
+            secret: "s".into(),
+            ..Default::default()
+        };
+        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        for key in ["socks-port", "port", "authentication", "external-ui", "tun"] {
+            assert!(c.get(key).is_none(), "{key} must be dropped");
+        }
+        assert!(c["dns"].get("listen").is_none());
+        assert_eq!(c["mixed-port"], DEFAULT_PORT);
+        assert_eq!(c["bind-address"], "192.168.0.1");
+        assert_eq!(c["external-controller"], CONTROLLER_ADDR);
+        assert_eq!(c["secret"], "s");
+        assert_eq!(c["find-process-mode"], "off");
+        assert_eq!(c["geo-auto-update"], false);
+        assert_eq!(c["profile"]["store-selected"], true);
+    }
+
+    #[test]
+    fn profile_tun_is_ours_and_keeps_their_sniffer() {
+        let state = State {
+            settings: Settings {
+                tun: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        assert_eq!(c["tun"]["stack"], "mixed");
+        assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
+        assert_eq!(c["tun"]["dns-hijack"], json!([]));
+        assert_eq!(c["sniffer"]["sniff"]["TLS"]["ports"], json!([443]));
+    }
+
+    #[test]
+    fn profile_without_groups_or_rules_is_rejected() {
+        let state = State::default();
+        let nodes_only = json!({"proxies": [{"name": "HK", "type": "ss"}]});
+        assert!(render(&state, "192.168.0.1", Some(&nodes_only)).is_err());
+        assert!(render(&state, "192.168.0.1", Some(&json!(["not", "a", "map"]))).is_err());
     }
 
     #[test]

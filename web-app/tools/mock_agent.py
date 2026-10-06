@@ -1331,6 +1331,17 @@ PROXY_NODES = {
     "a1b2c3d4": ["🇭🇰 Hong Kong 01", "🇭🇰 Hong Kong 02", "🇯🇵 Tokyo 01", "🇸🇬 Singapore 01", "🇺🇸 Los Angeles 01"],
     "e5f6a7b8": ["🇹🇼 Taipei 01", "🇯🇵 Osaka 02"],
 }
+# The "Main" subscription's own config (profile mode): groups in config order.
+PROFILE_GROUPS = [
+    ("节点选择", "Selector", ["自动选择", "中国香港", "DIRECT"]),
+    ("国外媒体", "Selector", ["节点选择", "中国香港", "🇯🇵 Tokyo 01"]),
+    ("苹果服务", "Selector", ["直接连接", "节点选择"]),
+    ("国内直连", "Selector", ["直接连接", "节点选择"]),
+    ("漏网之鱼", "Selector", ["节点选择", "直接连接"]),
+    ("自动选择", "URLTest", PROXY_NODES["a1b2c3d4"]),
+    ("中国香港", "URLTest", ["🇭🇰 Hong Kong 01", "🇭🇰 Hong Kong 02"]),
+    ("直接连接", "Selector", ["DIRECT"]),
+]
 
 
 def proxy_defaults():
@@ -1342,15 +1353,17 @@ def proxy_defaults():
         "preset": "bypass_cn",
         "tun": False,
         "mixed_port": 7890,
-        "now": "AUTO",
+        "profile": "a1b2c3d4",
+        "now": {"PROXY": "AUTO", "节点选择": "自动选择", "国外媒体": "节点选择", "苹果服务": "直接连接",
+                "国内直连": "直接连接", "漏网之鱼": "节点选择", "直接连接": "DIRECT"},
         "started": now - 3 * 3600 - 420,
         "subs": [
             {"id": "a1b2c3d4", "name": "Main", "url_masked": "https://sub.example.com/…", "enabled": True,
-             "interval_hours": 24, "updated": now - 1800,
+             "interval_hours": 24, "updated": now - 1800, "full": True,
              "usage": {"upload": 2_100_000_000, "download": 38_400_000_000, "total": 200_000_000_000,
                        "expire": now + 41 * 86400}},
             {"id": "e5f6a7b8", "name": "Backup", "url_masked": "https://backup.example.net/…", "enabled": True,
-             "interval_hours": 168, "updated": now - 5 * 86400,
+             "interval_hours": 168, "updated": now - 5 * 86400, "full": None,
              "usage": {"upload": 0, "download": 47_000_000_000, "total": 50_000_000_000, "expire": now + 4 * 86400}},
         ],
         "delays": {name: (60 + i * 47) % 420 for i, name in enumerate(n for ns in PROXY_NODES.values() for n in ns)},
@@ -1361,24 +1374,55 @@ def _proxy():
     return STATE["proxy"]
 
 
+def _profile_sub():
+    p = _proxy()
+    return next((s for s in p["subs"] if s["id"] == p["profile"]), None)
+
+
+def _groups():
+    """(name, type, now, members) for the active config."""
+    p = _proxy()
+    delays = p["delays"]
+    fastest = lambda names: min((n for n in names if delays.get(n)), key=lambda n: delays[n], default=None)
+    if _profile_sub():
+        return [(name, kind, p["now"].get(name) if kind == "Selector" else fastest(members) or members[0], members)
+                for name, kind, members in PROFILE_GROUPS]
+    names = [n for s in p["subs"] if s["enabled"] for n in PROXY_NODES.get(s["id"], [])]
+    if not names:
+        return [("PROXY", "Selector", "DIRECT", ["DIRECT"])]
+    return [("PROXY", "Selector", p["now"].get("PROXY", "AUTO"), ["AUTO", "DIRECT", *names]),
+            ("AUTO", "URLTest", fastest(names) or names[0], names)]
+
+
+def _route():
+    groups = {name: (kind, now) for name, kind, now, _ in _groups()}
+    main = next((name for name, kind, _, _ in _groups() if kind == "Selector"), None)
+    if not main:
+        return None
+    chain = [main]
+    while chain[-1] in groups and groups[chain[-1]][1] and len(chain) < 8:
+        chain.append(groups[chain[-1]][1])
+    return {"group": main, "chain": chain}
+
+
 def proxy_status():
     p = _proxy()
     running = p["running"]
-    auto = min((n for n, d in p["delays"].items() if d), key=lambda n: p["delays"][n], default=None)
+    profile = _profile_sub()
     return {
         "installed": True, "version": "v1.19.32", "running": running,
         "pid": 4321 if running else None,
         "uptime_secs": int(time.time()) - p["started"] if running else None,
         "rss_bytes": int(jitter(48_000_000, 0.05)) if running else None,
         "enabled": p["enabled"], "mode": p["mode"], "preset": p["preset"], "tun": p["tun"],
+        "profile": {"id": profile["id"], "name": profile["name"]} if profile else None,
         "tun_active": p["tun"] and running, "mixed_port": p["mixed_port"], "lan_ip": "192.168.0.1",
         "proxy_address": f"192.168.0.1:{p['mixed_port']}", "pac_url": "http://192.168.0.1:9090/proxy.pac",
         "subscriptions": len(p["subs"]),
         "traffic": {"up_total": 182_000_000, "down_total": 4_310_000_000,
                     "up_rate": int(jitter(42_000)), "down_rate": int(jitter(1_850_000)), "connections": 37}
         if running else None,
-        "selected": {"group_choice": p["now"], "auto_choice": auto if p["now"] == "AUTO" else None}
-        if running else None,
+        "route": _route() if running else None,
         "restarts": 0, "last_error": None, "notice": None,
     }
 
@@ -1420,13 +1464,16 @@ def proxy_subscriptions():
     p = _proxy()
     out = []
     for sub in p["subs"]:
-        on = p["running"] and sub["enabled"]
+        use_config = p["profile"] == sub["id"]
+        active = p["running"] and sub["enabled"] and (use_config or not p["profile"])
         out.append({
             "id": sub["id"], "name": sub["name"], "url_masked": sub["url_masked"], "enabled": sub["enabled"],
-            "interval_hours": sub["interval_hours"],
-            "node_count": len(PROXY_NODES.get(sub["id"], [])) if on else None,
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(sub["updated"])) if on and sub["updated"] else None,
-            "usage": sub["usage"] if on else None,
+            "interval_hours": sub["interval_hours"], "use_config": use_config, "full_config": sub.get("full"),
+            "groups": len(PROFILE_GROUPS) if use_config else None,
+            "node_count": len(PROXY_NODES.get(sub["id"], [])) if active or use_config else None,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(sub["updated"]))
+            if (active or use_config) and sub["updated"] else None,
+            "usage": sub["usage"] if active or use_config else None,
             "error": sub.get("error"),
         })
     return {"subscriptions": out, "running": p["running"]}
@@ -1457,13 +1504,16 @@ def post_proxy_subscription_add(body):
     sub_id = "%08x" % (len(_proxy()["subs"]) * 7919 + 0x10000000)
     _proxy()["subs"].append({"id": sub_id, "name": name.strip(), "url_masked": masked, "enabled": True,
                              "interval_hours": obj.get("interval_hours", 24), "updated": None, "usage": None,
+                             "full": False if obj.get("use_config") else None,
                              "error": "Not fetched in demo mode"})
-    return {"id": sub_id}
+    warning = "the subscription has no groups or rules; it was added as a node source" if obj.get("use_config") else None
+    return {"id": sub_id, "warning": warning}
 
 
 def put_proxy_subscription_edit(body):
     obj = need_object(body, None)
     sub = _find_sub(obj.get("id"))
+    p = _proxy()
     if "name" in obj:
         sub["name"] = str(obj["name"]).strip()
     if obj.get("url"):
@@ -1472,29 +1522,36 @@ def put_proxy_subscription_edit(body):
         sub["enabled"] = obj["enabled"]
     if _is_int(obj.get("interval_hours")):
         sub["interval_hours"] = obj["interval_hours"]
+    if obj.get("use_config") is True:
+        if not sub.get("full"):
+            raise ApiError(400, "the subscription has no groups or rules, so its own config cannot be used")
+        p["profile"] = sub["id"]
+    elif obj.get("use_config") is False and p["profile"] == sub["id"]:
+        p["profile"] = None
     return {}
 
 
 def post_proxy_subscription_delete(body):
     sub = _find_sub(need_object(body, None).get("id"))
-    _proxy()["subs"].remove(sub)
+    p = _proxy()
+    p["subs"].remove(sub)
+    if p["profile"] == sub["id"]:
+        p["profile"] = None
     return {}
 
 
 def post_proxy_subscription_update(body):
     obj = need_object(body, None)
     p = _proxy()
-    if not p["running"]:
-        raise ApiError(409, "start the proxy before updating subscriptions")
     targets = [_find_sub(obj["id"])] if "id" in obj else [s for s in p["subs"] if s["enabled"]]
     results = {}
     for sub in targets:
-        if sub["id"] in PROXY_NODES:
+        if sub["id"] in PROXY_NODES and (p["running"] or p["profile"] == sub["id"]):
             sub["updated"] = int(time.time())
             sub.pop("error", None)
             results[sub["id"]] = {"ok": True}
         else:
-            results[sub["id"]] = {"ok": False, "error": sub.get("error", "fetch failed")}
+            results[sub["id"]] = {"ok": False, "error": sub.get("error", "start the proxy before updating subscriptions")}
     return {"results": results}
 
 
@@ -1502,38 +1559,50 @@ def proxy_groups():
     p = _proxy()
     if not p["running"]:
         return {"running": False, "groups": [], "nodes": []}
+    managed = not _profile_sub()
     subs = {s["id"]: s["name"] for s in p["subs"] if s["enabled"]}
+    groups = [{"name": n, "type": k, "now": now, "all": m, "hidden": False} for n, k, now, m in _groups()]
+    names = [n for sid in (subs if managed else [p["profile"]]) for n in PROXY_NODES.get(sid, [])]
+    owner = {n: sid for sid in subs for n in PROXY_NODES.get(sid, [])}
     nodes = [
         {"name": n, "type": "Trojan" if i % 2 else "Shadowsocks", "udp": True, "alive": p["delays"].get(n, 0) > 0,
-         "delay": p["delays"].get(n), "subscription_id": sid, "subscription": subs[sid]}
-        for sid in subs for i, n in enumerate(PROXY_NODES.get(sid, []))
+         "delay": p["delays"].get(n),
+         "subscription_id": owner.get(n) if managed else None,
+         "subscription": subs.get(owner.get(n)) if managed else None}
+        for i, n in enumerate(names)
     ]
-    names = [n["name"] for n in nodes]
-    auto = min((n for n in names if p["delays"].get(n)), key=lambda n: p["delays"][n], default="DIRECT")
-    groups = [{"name": "PROXY", "type": "Selector", "now": p["now"], "all": ["AUTO", "DIRECT", *names]}]
-    if names:
-        groups.append({"name": "AUTO", "type": "URLTest", "now": auto, "all": names})
+    nodes.append({"name": "DIRECT", "type": "Direct", "udp": True, "alive": True, "delay": None,
+                  "subscription_id": None, "subscription": None})
     return {"running": True, "groups": groups, "nodes": nodes}
 
 
 def put_proxy_select(body):
     obj = need_object(body, None)
-    if obj.get("group") != "PROXY":
-        raise ApiError(400, "only the PROXY group can be selected manually")
-    choice = obj.get("proxy")
-    if choice not in proxy_groups()["groups"][0]["all"]:
-        raise ApiError(400, "unknown proxy")
-    _proxy()["now"] = choice
-    return {"now": choice}
+    group = obj.get("group")
+    found = next(((k, m) for n, k, _, m in _groups() if n == group), None)
+    if not found:
+        raise ApiError(400, "group is required")
+    kind, members = found
+    if kind != "Selector":
+        raise ApiError(400, "only select groups can be switched manually")
+    if obj.get("proxy") not in members:
+        raise ApiError(400, "that proxy is not in the group")
+    _proxy()["now"][group] = obj["proxy"]
+    return {"group": group, "now": obj["proxy"]}
 
 
 def post_proxy_delay(body):
+    obj = need_object(body, None)
     p = _proxy()
     if not p["running"]:
         raise ApiError(409, "the proxy is not running")
     for name in p["delays"]:
         p["delays"][name] = 0 if name.endswith("02") and random.random() < 0.5 else int(jitter(p["delays"][name] or 180, 0.3))
-    return {"delays": dict(p["delays"])}
+    group = obj.get("group")
+    if group:
+        members = next((m for n, _, _, m in _groups() if n == group), [])
+        return {"delays": {n: p["delays"][n] for n in members if n in p["delays"]}}
+    return {"delays": {}}
 
 
 # ── Mutable demo state ────────────────────────────────────────────────────────

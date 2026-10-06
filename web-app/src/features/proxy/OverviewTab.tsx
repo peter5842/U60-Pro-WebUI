@@ -147,7 +147,9 @@ export default function OverviewTab({ status }: { status: PollResult<ProxyStatus
               </Button>
             )}
           </div>
-          <p className="text-meta text-ink2">{MODE_HELP[mode]}</p>
+          <p className="text-meta text-ink2">
+            {mode === 'rule' && s.profile ? t('Traffic follows the rules of the subscription {name}.', { name: s.profile.name }) : MODE_HELP[mode]}
+          </p>
         </div>
       </Card>
 

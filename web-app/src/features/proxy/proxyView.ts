@@ -2,7 +2,7 @@
 
 import { t } from '../../i18n'
 import type { ChipTone } from '../../ui/primitives'
-import type { ProxyMode, ProxyNode, ProxyPreset, ProxyStatus, ProxyUsage } from '../../types'
+import type { ProxyGroup, ProxyMode, ProxyNode, ProxyPreset, ProxyStatus, ProxyUsage } from '../../types'
 
 export const MODE_OPTIONS: { value: ProxyMode; label: string }[] = [
   { value: 'rule', label: t('Rule') },
@@ -55,10 +55,26 @@ export function serviceState(s: ProxyStatus | null | undefined): { label: string
   return { label: t('Stopped'), tone: 'default' }
 }
 
-/** The node traffic actually leaves through, e.g. "AUTO → HK 01". */
+/** Where proxied traffic leaves, e.g. "节点选择 → 自动选择 → HK 01". */
 export function currentRoute(s: ProxyStatus | null | undefined): string | undefined {
-  if (!s?.group_choice) return undefined
-  return s.group_choice === 'AUTO' && s.auto_choice ? `AUTO → ${s.auto_choice}` : s.group_choice
+  return s?.route?.join(' → ')
+}
+
+const GROUP_TYPE_LABELS: Record<string, string> = {
+  Selector: t('Manual'),
+  URLTest: t('Fastest'),
+  Fallback: t('Fallback'),
+  LoadBalance: t('Load balance'),
+  Relay: t('Relay'),
+}
+
+export function groupTypeLabel(type: string | undefined): string {
+  return (type && GROUP_TYPE_LABELS[type]) ?? type ?? ''
+}
+
+/** Only select groups accept a manual choice. */
+export function isSelectable(group: ProxyGroup): boolean {
+  return group.type === 'Selector'
 }
 
 /** Used share of the plan (0-100+), when the provider reports a total. */
@@ -104,18 +120,29 @@ export function delayLabel(delay: number | undefined): string {
   return delay === 0 ? t('timeout') : `${delay} ms`
 }
 
-export type NodeSort = 'name' | 'delay'
+export type NodeSort = 'config' | 'delay'
 
-/** Filter by a case-insensitive substring, then sort. Untested and timed-out nodes sort last by delay. */
-export function visibleNodes(nodes: ProxyNode[], query: string, sort: NodeSort): ProxyNode[] {
+/**
+ * A group's members after filtering (case-insensitive substring of the name or
+ * subscription) and sorting. `config` keeps the provider's order; `delay` puts
+ * the fastest first and untested/timed-out members last.
+ */
+export function visibleMembers(
+  members: string[],
+  nodes: Map<string, ProxyNode>,
+  query: string,
+  sort: NodeSort,
+): string[] {
   const q = query.trim().toLowerCase()
   const filtered = q
-    ? nodes.filter((n) => n.name.toLowerCase().includes(q) || n.subscription.toLowerCase().includes(q))
-    : nodes.slice()
-  const rank = (n: ProxyNode) => (n.delay ? n.delay : Number.POSITIVE_INFINITY)
-  return filtered.sort((a, b) =>
-    sort === 'delay' ? rank(a) - rank(b) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name),
-  )
+    ? members.filter((m) => m.toLowerCase().includes(q) || nodes.get(m)?.subscription?.toLowerCase().includes(q))
+    : members.slice()
+  if (sort === 'config') return filtered
+  const rank = (m: string) => nodes.get(m)?.delay || Number.POSITIVE_INFINITY
+  return filtered
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i)
+    .map((x) => x.m)
 }
 
 /** Relative time for an RFC 3339 timestamp, e.g. "5 min ago". */

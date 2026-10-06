@@ -51,7 +51,13 @@ export default function SubscriptionsTab() {
         )}
         <ul className="divide-y divide-line/6">
           {subs.data.subscriptions.map((s) => (
-            <SubscriptionRow key={s.id} sub={s} running={subs.data!.running} onChanged={subs.refresh} />
+            <SubscriptionRow
+              key={s.id}
+              sub={s}
+              running={subs.data!.running}
+              profileActive={subs.data!.subscriptions.some((x) => x.use_config)}
+              onChanged={subs.refresh}
+            />
           ))}
         </ul>
       </div>
@@ -77,8 +83,18 @@ export default function SubscriptionsTab() {
   )
 }
 
-function SubscriptionRow({ sub, running, onChanged }: { sub: ProxySubscription; running: boolean; onChanged: () => void }) {
-  const [busy, setBusy] = useState<'update' | 'toggle' | 'delete' | null>(null)
+function SubscriptionRow({
+  sub,
+  running,
+  profileActive,
+  onChanged,
+}: {
+  sub: ProxySubscription
+  running: boolean
+  profileActive: boolean
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState<'update' | 'toggle' | 'delete' | 'config' | null>(null)
   const [editing, setEditing] = useState(false)
   const pct = usagePct(sub.usage)
   const used = usedBytes(sub.usage)
@@ -104,6 +120,19 @@ function SubscriptionRow({ sub, running, onChanged }: { sub: ProxySubscription; 
     setBusy('toggle')
     try {
       await api.proxySubscriptionEdit({ id: sub.id, enabled })
+    } catch (e) {
+      toastError(e, t('Failed to change the subscription'))
+    } finally {
+      setBusy(null)
+      onChanged()
+    }
+  }
+
+  async function setUseConfig(on: boolean) {
+    setBusy('config')
+    try {
+      await api.proxySubscriptionEdit({ id: sub.id, use_config: on })
+      toast(on ? t('Now using the rules and groups of {name}', { name: sub.name }) : t('Switched to the managed rules'))
     } catch (e) {
       toastError(e, t('Failed to change the subscription'))
     } finally {
@@ -140,12 +169,26 @@ function SubscriptionRow({ sub, running, onChanged }: { sub: ProxySubscription; 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-semibold text-ink">{sub.name}</span>
             {!sub.enabled && <Chip>{t('Off')}</Chip>}
+            {sub.use_config && <Chip tone="ok">{t('Rules in use')}</Chip>}
+            {!sub.use_config && profileActive && sub.enabled && <Chip>{t('Not in use')}</Chip>}
             {sub.node_count !== undefined && <Chip tone="accent">{t('{n} nodes', { n: sub.node_count })}</Chip>}
+            {sub.groups !== undefined && <Chip>{t('{n} groups', { n: sub.groups })}</Chip>}
             <Chip>{intervalLabel(sub.interval_hours)}</Chip>
           </div>
           <p className="mt-0.5 break-all font-mono text-caption text-ink3">{sub.url_masked}</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {sub.use_config ? (
+            <Button size="sm" variant="ghost" onClick={() => void setUseConfig(false)} loading={busy === 'config'} disabled={!!busy}>
+              {t('Use managed rules')}
+            </Button>
+          ) : (
+            sub.enabled && (
+              <Button size="sm" variant="ghost" onClick={() => void setUseConfig(true)} loading={busy === 'config'} disabled={!!busy}>
+                {t('Use its rules')}
+              </Button>
+            )
+          )}
           <Toggle
             checked={sub.enabled}
             onChange={(v) => void toggle(v)}
@@ -160,7 +203,7 @@ function SubscriptionRow({ sub, running, onChanged }: { sub: ProxySubscription; 
             variant="outline"
             onClick={() => void update()}
             loading={busy === 'update'}
-            disabled={!!busy || !running || !sub.enabled}
+            disabled={!!busy || !sub.enabled || (!sub.use_config && (!running || profileActive))}
           >
             {t('Update')}
           </Button>
@@ -275,6 +318,7 @@ function EditSubscription({ sub, onDone }: { sub: ProxySubscription; onDone: () 
 }
 
 function AddSubscription({ onAdded }: { onAdded: () => void }) {
+  const [useConfig, setUseConfig] = useState(true)
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [intervalHours, setIntervalHours] = useState(24)
@@ -287,8 +331,14 @@ function AddSubscription({ onAdded }: { onAdded: () => void }) {
     if (v.name || v.url) return
     setBusy(true)
     try {
-      await api.proxySubscriptionAdd({ name: name.trim(), url: url.trim(), interval_hours: intervalHours })
-      toast(t('{name} added', { name: name.trim() }))
+      const r = await api.proxySubscriptionAdd({
+        name: name.trim(),
+        url: url.trim(),
+        interval_hours: intervalHours,
+        use_config: useConfig,
+      })
+      if (r.warning) toast(t('{name} added as a node source: it has no groups or rules', { name: name.trim() }), 'err')
+      else toast(t('{name} added', { name: name.trim() }))
       setName('')
       setUrl('')
       onAdded()
@@ -335,6 +385,15 @@ function AddSubscription({ onAdded }: { onAdded: () => void }) {
               inputMode="url"
             />
           </Field>
+        </div>
+        <div className="flex items-start justify-between gap-4 sm:col-span-2">
+          <div>
+            <p className="text-body font-medium text-ink">{t('Use the subscription’s own rules and groups')}</p>
+            <p className="mt-0.5 text-meta text-ink2">
+              {t('Recommended for providers that serve a complete Clash/mihomo config. Turn off to use only its nodes with the managed rules.')}
+            </p>
+          </div>
+          <Toggle checked={useConfig} onChange={setUseConfig} label={t('Use the subscription’s own rules and groups')} />
         </div>
         <div className="sm:col-span-2">
           <Button type="submit" variant="primary" loading={busy}>

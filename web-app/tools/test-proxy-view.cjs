@@ -18,15 +18,19 @@ test('status mapper validates fields and flattens the selected route', () => {
     mixed_port: 7890,
     subscriptions: 2,
     traffic: { up_total: 10, down_total: 20, up_rate: null, down_rate: 'x', connections: 3 },
-    selected: { group_choice: 'AUTO', auto_choice: 'HK 01' },
+    route: { group: '节点选择', chain: ['节点选择', '自动选择', 'HK 01'] },
+    profile: { id: 'a1b2c3d4', name: 'Main' },
     restarts: 1,
     last_error: '',
   })
   assert.equal(s.preset, undefined)
   assert.equal(s.mode, 'rule')
   assert.deepEqual(s.traffic, { up_total: 10, down_total: 20, up_rate: undefined, down_rate: undefined, connections: 3 })
-  assert.equal(s.group_choice, 'AUTO')
-  assert.equal(view.currentRoute(s), 'AUTO → HK 01')
+  assert.deepEqual(s.route, ['节点选择', '自动选择', 'HK 01'])
+  assert.equal(view.currentRoute(s), '节点选择 → 自动选择 → HK 01')
+  assert.deepEqual(s.profile, { id: 'a1b2c3d4', name: 'Main' })
+  assert.equal(map.mapProxyStatus({ profile: { id: 'x' }, route: { chain: [] } }).profile, undefined)
+  assert.equal(map.mapProxyStatus({ route: { chain: [] } }).route, undefined)
   assert.equal(s.last_error, undefined)
   assert.deepEqual(view.serviceState(s), { label: 'Running', tone: 'ok' })
 })
@@ -45,6 +49,7 @@ test('subscriptions mapper drops malformed rows and empty usage', () => {
     running: true,
     subscriptions: [
       { id: 'a1', name: 'Main', url_masked: 'https://x/…', enabled: true, interval_hours: 24, node_count: 5,
+        use_config: true, full_config: true, groups: 15,
         usage: { upload: 1, download: 2, total: 100, expire: 1900000000 } },
       { id: 'a2', name: 'Empty', enabled: false, interval_hours: 0, usage: { upload: null } },
       { name: 'no id' },
@@ -54,6 +59,10 @@ test('subscriptions mapper drops malformed rows and empty usage', () => {
   assert.equal(d.subscriptions.length, 2)
   assert.equal(d.subscriptions[1].usage, undefined)
   assert.equal(d.subscriptions[0].usage.total, 100)
+  assert.equal(d.subscriptions[0].use_config, true)
+  assert.equal(d.subscriptions[0].groups, 15)
+  assert.equal(d.subscriptions[1].use_config, false)
+  assert.equal(d.subscriptions[1].full_config, undefined)
 })
 
 test('usage percentage, bytes and tone', () => {
@@ -84,25 +93,36 @@ test('delay labels and tones; timeouts and untested sort last', () => {
   assert.equal(view.delayTone(0), 'danger')
   assert.equal(view.delayTone(150), 'ok')
   assert.equal(view.delayTone(300), 'warn')
-  const nodes = [
-    { name: 'B', delay: 0, subscription: 'Main', subscription_id: 'a' },
-    { name: 'A', delay: 300, subscription: 'Main', subscription_id: 'a' },
-    { name: 'C', delay: 90, subscription: 'Backup', subscription_id: 'b' },
-    { name: 'D', subscription: 'Main', subscription_id: 'a' },
-  ]
-  assert.deepEqual(view.visibleNodes(nodes, '', 'delay').map((n) => n.name), ['C', 'A', 'B', 'D'])
-  assert.deepEqual(view.visibleNodes(nodes, '', 'name').map((n) => n.name), ['A', 'B', 'C', 'D'])
-  assert.deepEqual(view.visibleNodes(nodes, 'backup', 'name').map((n) => n.name), ['C'])
+  const nodes = new Map([
+    ['B', { name: 'B', delay: 0, subscription: 'Main' }],
+    ['A', { name: 'A', delay: 300, subscription: 'Main' }],
+    ['C', { name: 'C', delay: 90, subscription: 'Backup' }],
+    ['D', { name: 'D' }],
+  ])
+  const members = ['B', 'A', '自动选择', 'C', 'D']
+  assert.deepEqual(view.visibleMembers(members, nodes, '', 'delay'), ['C', 'A', 'B', '自动选择', 'D'])
+  assert.deepEqual(view.visibleMembers(members, nodes, '', 'config'), members)
+  assert.deepEqual(view.visibleMembers(members, nodes, 'backup', 'config'), ['C'])
+  assert.deepEqual(view.visibleMembers(members, nodes, '自动', 'config'), ['自动选择'])
+})
+
+test('group types: only select groups are switchable', () => {
+  assert.equal(view.isSelectable({ name: 'g', type: 'Selector', all: [] }), true)
+  assert.equal(view.isSelectable({ name: 'g', type: 'URLTest', all: [] }), false)
+  assert.equal(view.groupTypeLabel('URLTest'), 'Fastest')
+  assert.equal(view.groupTypeLabel('Mystery'), 'Mystery')
+  assert.equal(view.groupTypeLabel(undefined), '')
 })
 
 test('groups and delay mappers', () => {
   const g = map.mapProxyGroups({
     running: true,
     groups: [{ name: 'PROXY', type: 'Selector', now: 'AUTO', all: ['AUTO', 'DIRECT', 'HK'] }, { now: 'x' }],
-    nodes: [{ name: 'HK', delay: 80, subscription_id: 'a1', subscription: 'Main' }, { name: 'orphan' }],
+    nodes: [{ name: 'HK', delay: 80, subscription_id: 'a1', subscription: 'Main' }, { name: 'JP' }, { delay: 3 }],
   })
   assert.equal(g.groups.length, 1)
-  assert.equal(g.nodes.length, 1)
+  assert.equal(g.nodes.length, 2)
+  assert.equal(g.nodes[1].subscription, undefined)
   assert.deepEqual(map.mapProxyDelays({ delays: { HK: 80, JP: 0, bad: 'x' } }), { HK: 80, JP: 0 })
 })
 

@@ -77,13 +77,18 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
   return (
     <>
       <Card title={t('Routing')}>
-        <div className="space-y-3">
+        {s.profile ? (
+          <InlineStatus kind="info" live={false}>
+            {t('Rules and groups come from the subscription {name}. The presets below apply only to the managed rules.', { name: s.profile.name })}
+          </InlineStatus>
+        ) : null}
+        <div className={`space-y-3 ${s.profile ? 'mt-3 opacity-60' : ''}`}>
           <Segmented<ProxyPreset>
             label={t('Routing preset')}
             options={PRESET_OPTIONS.map(({ value, label }) => ({ value, label }))}
             value={preset}
             onChange={setPresetDraft}
-            disabled={!!busy}
+            disabled={!!busy || !!s.profile}
             wrap
           />
           <p className="text-meta text-ink2">{presetHelp} {t('Applies in Rule mode.')}</p>

@@ -34,7 +34,10 @@ function mapTraffic(v: unknown): ProxyTraffic | undefined {
 }
 
 export function mapProxyStatus(d: Record<string, unknown>): ProxyStatus {
-  const selected = isObj(d.selected) ? d.selected : {}
+  const route = isObj(d.route) ? strList(d.route.chain) : undefined
+  const profile = isObj(d.profile) && nonEmptyStr(d.profile.id) && nonEmptyStr(d.profile.name)
+    ? { id: d.profile.id as string, name: d.profile.name as string }
+    : undefined
   return {
     installed: boolLike(d.installed) ?? false,
     version: nonEmptyStr(d.version),
@@ -53,8 +56,8 @@ export function mapProxyStatus(d: Record<string, unknown>): ProxyStatus {
     pac_url: nonEmptyStr(d.pac_url),
     subscriptions: nonNegativeInt(d.subscriptions) ?? 0,
     traffic: mapTraffic(d.traffic),
-    group_choice: nonEmptyStr(selected.group_choice),
-    auto_choice: nonEmptyStr(selected.auto_choice),
+    route: route?.length ? route : undefined,
+    profile,
     restarts: nonNegativeInt(d.restarts) ?? 0,
     last_error: nonEmptyStr(d.last_error),
     notice: nonEmptyStr(d.notice),
@@ -83,6 +86,9 @@ function mapSubscription(v: unknown): ProxySubscription | null {
     url_masked: str(v.url_masked) ?? '',
     enabled: boolLike(v.enabled) ?? false,
     interval_hours: nonNegativeInt(v.interval_hours) ?? 0,
+    use_config: boolLike(v.use_config) ?? false,
+    full_config: boolLike(v.full_config),
+    groups: nonNegativeInt(v.groups),
     node_count: nonNegativeInt(v.node_count),
     updated_at: nonEmptyStr(v.updated_at),
     usage: mapUsage(v.usage),
@@ -102,22 +108,21 @@ function mapGroup(v: unknown): ProxyGroup | null {
   if (!isObj(v)) return null
   const name = nonEmptyStr(v.name)
   if (!name) return null
-  return { name, type: nonEmptyStr(v.type), now: nonEmptyStr(v.now), all: strList(v.all) ?? [] }
+  return { name, type: nonEmptyStr(v.type), now: nonEmptyStr(v.now), all: strList(v.all) ?? [], hidden: boolLike(v.hidden) }
 }
 
 function mapNode(v: unknown): ProxyNode | null {
   if (!isObj(v)) return null
   const name = nonEmptyStr(v.name)
-  const subscriptionId = nonEmptyStr(v.subscription_id)
-  if (!name || !subscriptionId) return null
+  if (!name) return null
   return {
     name,
     type: nonEmptyStr(v.type),
     udp: boolLike(v.udp),
     alive: boolLike(v.alive),
     delay: nonNegativeInt(v.delay),
-    subscription_id: subscriptionId,
-    subscription: nonEmptyStr(v.subscription) ?? subscriptionId,
+    subscription_id: nonEmptyStr(v.subscription_id),
+    subscription: nonEmptyStr(v.subscription),
   }
 }
 

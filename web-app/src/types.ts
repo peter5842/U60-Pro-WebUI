@@ -512,10 +512,10 @@ export interface ProxyStatus {
   pac_url?: string
   subscriptions: number
   traffic?: ProxyTraffic
-  /** What the PROXY group points at ("AUTO", "DIRECT" or a node). */
-  group_choice?: string
-  /** The node AUTO currently picks, when PROXY → AUTO. */
-  auto_choice?: string
+  /** The main select group and what its choice resolves through, e.g. [节点选择, 自动选择, HK 01]. */
+  route?: string[]
+  /** Set when a subscription's own config (groups and rules) is in use. */
+  profile?: { id: string; name: string }
   restarts: number
   last_error?: string
   notice?: string
@@ -535,6 +535,11 @@ export interface ProxySubscription {
   url_masked: string
   enabled: boolean
   interval_hours: number
+  /** This subscription's own config (groups, rules) is the active profile. */
+  use_config: boolean
+  /** Whether the last download was a full config; unknown until downloaded by the agent. */
+  full_config?: boolean
+  groups?: number
   node_count?: number
   updated_at?: string
   usage?: ProxyUsage
@@ -549,9 +554,11 @@ export interface ProxySubscriptions {
 
 export interface ProxyGroup {
   name: string
+  /** Selector, URLTest, Fallback, LoadBalance or Relay. Only Selector can be switched. */
   type?: string
   now?: string
   all: string[]
+  hidden?: boolean
 }
 
 export interface ProxyNode {
@@ -561,8 +568,9 @@ export interface ProxyNode {
   alive?: boolean
   /** Last measured delay in ms; 0 = the last test timed out. */
   delay?: number
-  subscription_id: string
-  subscription: string
+  /** Managed mode only: the subscription the node came from. */
+  subscription_id?: string
+  subscription?: string
 }
 
 export interface ProxyGroups {

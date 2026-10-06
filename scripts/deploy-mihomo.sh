@@ -56,7 +56,7 @@ head -c 20 "$WORK/mihomo" | od -An -tx1 | tr -d ' \n' | grep -q '^7f454c460201' 
 
 echo "Downloading geodata…"
 GEO_BASE=https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest
-for file in geoip.metadb geosite.dat; do
+for file in geoip.metadb geoip.dat geosite.dat; do
     fetch "$GEO_BASE/$file" "$WORK/$file"
     fetch "$GEO_BASE/$file.sha256sum" "$WORK/$file.sha256sum"
     [ "$(sha "$WORK/$file")" = "$(awk '{print $1}' "$WORK/$file.sha256sum")" ] \
@@ -70,7 +70,7 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 "${SSH[@]}" 'mkdir -p /data/mihomo/providers && chmod 700 /data/mihomo'
-for file in mihomo geoip.metadb geosite.dat; do
+for file in mihomo geoip.metadb geoip.dat geosite.dat; do
     want=$(sha "$WORK/$file")
     "${SSH[@]}" "set -e; cat > /data/mihomo/$file.new; \
         test \"\$(sha256sum /data/mihomo/$file.new | awk '{print \$1}')\" = $want; \
