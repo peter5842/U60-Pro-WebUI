@@ -4,6 +4,7 @@ mod auth;
 mod cache;
 mod cell;
 mod charge_policy;
+mod clients;
 mod connection_logger;
 mod csv_utils;
 mod device_ext;

@@ -6,8 +6,10 @@ import type { Client } from '../../types'
 import { ICable, ILaptop, IRefresh, IUsb, IWifi } from '../../icons'
 import { Button } from '../../ui/controls'
 import { Card, Chip, Empty, InlineStatus, Loading, Skeleton, Unavailable } from '../../ui/primitives'
+import DeviceControls from './DeviceControls'
 import {
   clientFields,
+  displayName,
   formatBitrate,
   formatLinkMbps,
   formatWifiLink,
@@ -20,7 +22,7 @@ const TD_CLS = 'py-2 pr-4'
 const MONO_TD = `${TD_CLS} tnum font-mono text-meta text-ink2`
 
 const Value = ({ v }: { v: string | undefined }) => (v ? <>{v}</> : <Unavailable />)
-const hostname = (c: Client) => c.hostname || <Unavailable label={t('No hostname')} />
+const hostname = (c: Client) => displayName(c) || <Unavailable label={t('No hostname')} />
 
 /** Below `sm`: one stacked row per client with every field the desktop table has (U07). */
 function StackedClients({
@@ -303,6 +305,8 @@ export default function ClientsTab() {
           </div>
         </Card>
       )}
+
+      {clients.length > 0 && <DeviceControls clients={clients} onChanged={clientsPoll.refresh} />}
     </div>
   )
 }

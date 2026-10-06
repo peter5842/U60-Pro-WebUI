@@ -65,3 +65,17 @@ export function clientFields(group: 'wifi' | 'usb' | 'ethernet' | 'other', c: Cl
   fields.push({ label: 'MAC', value: c.mac, mono: true })
   return fields
 }
+
+/** The name to show: one set by the user first, then the DHCP hostname. */
+export function displayName(c: Pick<Client, 'name' | 'hostname'>): string | undefined {
+  return c.name || c.hostname || undefined
+}
+
+/** Mirrors the agent's rule (agent/src/clients.rs `valid_name`). Returns an error message or undefined. */
+export function validateClientName(name: string): string | undefined {
+  if (name.length === 0) return t('Enter a name')
+  if ([...name].length > 32) return t('At most 32 characters')
+  if (name.trim() !== name) return t('No spaces at the start or end')
+  if (/[\p{Cc}'";$`\\|<>&]/u.test(name)) return t('Quotes and shell symbols ( \' " ; $ ` \\ | < > & ) are not allowed')
+  return undefined
+}

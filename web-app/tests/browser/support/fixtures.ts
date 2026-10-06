@@ -435,6 +435,8 @@ export const sleep = (over?: Json): Json => merge({ minutes: -1, options: [-1, 5
 export const rebootSchedule = (over?: Json): Json =>
   merge({ enabled: false, mode: 'weekly', weekday: 2, interval_days: 1, hour: 2, minute: 0, window_hours: 2 }, over)
 
+export const blocklist = (over?: Json): Json => merge({ blocked: [], max: 32, available: true }, over)
+
 export const apnMode = (over?: Json): Json => merge({ apn_mode: 1 }, over)
 
 export function apnProfiles(over?: { apnListArray?: Json[] }): Json {

@@ -429,8 +429,8 @@ def dashboard_batch():
 
 
 def clients():
-    return {
-        "clients": [
+    rows = [
+
             {"mac": "00:00:5E:00:53:01", "ip": "192.168.0.101", "hostname": "macbook-pro",
              "medium": "wifi", "medium_detail": "wifi_5ghz", "wifi_band": "5 GHz",
              "signal_dbm": -42, "tx_bitrate_mbps": 2401.9, "rx_bitrate_mbps": 2401.9,
@@ -449,8 +449,62 @@ def clients():
             {"mac": "00:00:5E:00:53:05", "ip": "192.168.0.105", "hostname": "office-pc",
              "medium": "ethernet", "medium_detail": "ethernet", "interface": "eth0",
              "wired_link_mbps": 1000, "connected_secs": 512_000},
-        ]
-    }
+    ]
+    ctl = STATE["client_ctl"]
+    out = []
+    for row in rows:
+        if row["medium"] == "wifi" and row["mac"] in ctl["blocked"]:
+            continue
+        name = ctl["names"].get(row["mac"])
+        out.append({**row, "name": name} if name else row)
+    return {"clients": out}
+
+
+MOCK_MAC = re.compile(r"^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$")
+SHELL_CHARS = set("'\";$`\\|<>&")
+
+
+def _mac(obj):
+    mac = obj.get("mac")
+    if not (isinstance(mac, str) and MOCK_MAC.match(mac.strip())):
+        raise ApiError(400, "mac must be a MAC address")
+    return mac.strip().replace("-", ":").upper()
+
+
+def put_client_name(body):
+    obj = need_object(body, None)
+    mac = _mac(obj)
+    name = obj.get("name")
+    if not (isinstance(name, str) and 1 <= len(name) <= 32 and name.strip() == name
+            and not any(c in SHELL_CHARS or ord(c) < 32 for c in name)):
+        raise ApiError(400, "name must be 1-32 characters without quotes or shell symbols")
+    STATE["client_ctl"]["names"][mac] = name
+    return {"mac": mac, "name": name}
+
+
+def post_client_kick(body):
+    return {"mac": _mac(need_object(body, None))}
+
+
+def blocklist():
+    ctl = STATE["client_ctl"]
+    return {"blocked": [{"mac": m, "name": ctl["names"].get(m)} for m in sorted(ctl["blocked"])],
+            "max": 32, "available": True}
+
+
+def put_blocklist(body):
+    obj = need_object(body, None)
+    mac = _mac(obj)
+    if not isinstance(obj.get("blocked"), bool):
+        raise ApiError(400, "blocked must be a boolean")
+    blocked = STATE["client_ctl"]["blocked"]
+    if obj["blocked"]:
+        if mac not in blocked and len(blocked) >= 32:
+            raise ApiError(400, "at most 32 devices can be blocked")
+        blocked.add(mac)
+    else:
+        blocked.discard(mac)
+    return blocklist()
 
 
 # ── Wi-Fi (wifi.rs) ───────────────────────────────────────────────────────────
@@ -1714,6 +1768,7 @@ def initial_state(scenario):
         "proxy": proxy_defaults(),
         "power": {"sleep": -1, "reboot": {"enabled": False, "mode": "weekly", "weekday": 2, "interval_days": 1,
                                          "hour": 2, "minute": 0, "window_hours": 2}},
+        "client_ctl": {"names": {}, "blocked": set()},
         "wwan": {"connected": True, "limit": {"enabled": False, "bytes": 322122547200, "alert": 80}},
     }
 
@@ -1741,6 +1796,8 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/network/clients/name": put_client_name,
+    "/api/network/blocklist": put_blocklist,
     "/api/device/sleep": put_sleep,
     "/api/device/reboot-schedule": put_reboot_schedule,
     "/api/modem/data": put_mobile_data,
@@ -1763,6 +1820,7 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/network/blocklist": blocklist,
     "/api/device/sleep": sleep_setting,
     "/api/device/reboot-schedule": reboot_schedule,
     "/api/modem/data": mobile_data,
@@ -1808,6 +1866,7 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/network/clients/kick": post_client_kick,
     "/api/proxy/service": post_proxy_service,
     "/api/proxy/subscriptions": post_proxy_subscription_add,
     "/api/proxy/subscriptions/delete": post_proxy_subscription_delete,

@@ -111,6 +111,8 @@ export interface Client {
   mac: string
   ip?: string
   hostname?: string
+  /** Name set here or in the stock UI; shown instead of the DHCP hostname. */
+  name?: string
   medium?: 'wifi' | 'usb-c' | 'ethernet' | 'wired'
   medium_detail?: 'wifi_2ghz' | 'wifi_5ghz' | 'usb_c' | 'ethernet'
   interface?: string
@@ -623,4 +625,11 @@ export interface RebootSchedule {
   minute: number
   /** The firmware reboots at a random moment within this many hours after the set time. */
   window_hours: number
+}
+
+export interface Blocklist {
+  blocked: { mac: string; name?: string }[]
+  max: number
+  /** False when the Wi-Fi MAC filter is in allow-list mode (set in the stock UI). */
+  available: boolean
 }

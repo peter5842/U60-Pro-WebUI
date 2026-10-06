@@ -256,6 +256,7 @@ export function registerDefaults(agent: MockAgent) {
   get('/api/cpu', fx.cpu())
   get('/api/memory', fx.memory())
   get('/api/network/clients', fx.clients())
+  get('/api/network/blocklist', fx.blocklist())
   get('/api/sim/info', fx.simInfo())
   get('/api/sim/imei', fx.simImei())
   get('/api/modem/capabilities', fx.modemCapabilities())

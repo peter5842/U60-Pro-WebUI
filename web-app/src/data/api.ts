@@ -10,6 +10,7 @@ import { get, post, put, readCsv, req } from './client'
 import { t } from '../i18n'
 import { normaliseBands, parseLteBandLock, parseNrBandLock } from './bands'
 import { mapDataUsage } from './usage'
+import { mapBlocklist } from './clients'
 import { mapRebootSchedule, mapSleep } from './schedule'
 import { mapDataLimit, mapMobileData } from './wwan'
 import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
@@ -18,6 +19,7 @@ import { widthMhz } from './wifiWidth'
 import type {
   ApnModeState,
   ApnProfile,
+  Blocklist,
   AtSendResult,
   BatteryBspInfo,
   BatteryDetail,
@@ -468,6 +470,7 @@ function mapClients(d: Record<string, unknown>): Client[] {
       mac: c.mac as string,
       ip: c.ip as string | undefined,
       hostname: c.hostname as string | undefined,
+      name: nonEmptyStr(c.name),
       medium: c.medium as Client['medium'],
       medium_detail: c.medium_detail as Client['medium_detail'],
       interface: c.interface as string | undefined,
@@ -937,6 +940,14 @@ export const api = {
   sleepSet: (minutes: number) => put('/api/device/sleep', { minutes }).then(mapSleep),
   rebootSchedule: () => get('/api/device/reboot-schedule').then(mapRebootSchedule),
   rebootScheduleSet: (body: Partial<RebootSchedule>) => put('/api/device/reboot-schedule', body).then(mapRebootSchedule),
+
+  // Client controls
+  clientNameSet: (mac: string, name: string) => put('/api/network/clients/name', { mac, name }),
+  clientKick: (mac: string) => post('/api/network/clients/kick', { mac }),
+  blocklist: () => get('/api/network/blocklist').then(mapBlocklist),
+  /** The agent waits for the firmware to apply the filter, so allow a longer timeout. */
+  blocklistSet: (mac: string, blocked: boolean): Promise<Blocklist> =>
+    req('PUT', '/api/network/blocklist', { mac, blocked }, undefined, 20_000).then(mapBlocklist),
 
   // WiFi
   wifiStatus: () => get('/api/wifi/status').then(mapWifi),

@@ -19,14 +19,14 @@ canonical routing table; this document summarizes it.
 
 Every route below has a dashboard consumer, and every call the dashboard makes
 is a route below — `scripts/check-api-contract.py` enforces both directions
-(plus that the mock agent stays in step). 70 paths / 82 method+path pairs.
+(plus that the mock agent stays in step). 73 paths / 86 method+path pairs.
 
 | Family | Endpoints |
 |---|---|
 | Auth | `POST /api/auth/login` — bearer token, sliding 1 h expiry |
 | Batch | `GET /api/dashboard` — device, battery, cpu, memory, speed, data usage, signal, wan, wan6, thermal in one request. The app's heartbeat: Home, Signal and Modem/Data all read it instead of polling their own endpoints |
 | Status | `GET /api/device`, `/api/cpu`, `/api/memory`, `/api/system/top` |
-| Network | `GET /api/network/clients` |
+| Network | `GET /api/network/clients` (with `name`, the user-set name); `PUT /api/network/clients/name` (stock `router_modify_lan_hostname`); `POST /api/network/clients/kick` (Wi-Fi only, `zwrt_wlan kick_macs`); `GET+PUT /api/network/blocklist` (the Wi-Fi MAC filter in deny mode on every AP, applied live by hostapd; the firmware's `maclist` mirror is checked after each change because `/lib/wifi/zteqcawifi.sh` builds the deny file from it at Wi-Fi start) |
 | Device | `GET /api/device/battery-info`, `/api/device/thermal/all`, `/api/device/battery/detail`, `/api/device/charger`; `POST /api/device/reboot`, `/api/device/shutdown`; `GET+PUT /api/device/sleep` (idle minutes before the device sleeps, `-1` = never; stock `set_ufi_sleep`); `GET+PUT /api/device/reboot-schedule` (weekly or every N days, time and random delay window; stock `set_device_info`, read from uci `zwrt_zte_mc.reboot_schedule`) |
 | System | `POST /api/system/restart-agent`, `/api/system/kill-bloat` |
 | Wi-Fi | `GET /api/wifi/status`, `PUT /api/wifi/settings` |

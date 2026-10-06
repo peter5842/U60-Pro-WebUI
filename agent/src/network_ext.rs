@@ -217,6 +217,7 @@ pub fn network_clients(_state: &AppState) -> (u16, Value) {
         }
     }
 
+    let names = crate::clients::custom_names();
     let arp = arp_entries();
     let ip_by_mac: HashMap<String, String> = arp.iter().cloned().collect();
     let wifi_2g = parse_station_dump("wlan0", "2.4 GHz");
@@ -246,6 +247,7 @@ pub fn network_clients(_state: &AppState) -> (u16, Value) {
             "mac": mac,
             "ip": ip_by_mac.get(&mac).cloned(),
             "hostname": hostname_by_mac.get(&mac).cloned(),
+            "name": names.get(&mac).cloned(),
             "medium": medium,
             "medium_detail": medium_detail,
             "interface": port,

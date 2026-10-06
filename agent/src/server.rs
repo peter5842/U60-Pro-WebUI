@@ -8,6 +8,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::at_cmd;
 use crate::cell;
+use crate::clients;
 use crate::connection_logger;
 use crate::device_ext;
 use crate::handlers::{self, AppState};
@@ -351,6 +352,10 @@ pub fn route(
             handlers::data_usage_reset_day_set(state, body)
         }
         (&Method::Get, "/api/modem/capabilities") => cell::modem_capabilities(state),
+        (&Method::Put, "/api/network/clients/name") => clients::name_set(state, body),
+        (&Method::Post, "/api/network/clients/kick") => clients::kick_post(state, body),
+        (&Method::Get, "/api/network/blocklist") => clients::blocklist_get(state),
+        (&Method::Put, "/api/network/blocklist") => clients::blocklist_set(state, body),
         (&Method::Get, "/api/modem/data") => wwan::data_get(state),
         (&Method::Put, "/api/modem/data") => wwan::data_set(state, body),
         (&Method::Get, "/api/data-usage/limit") => wwan::limit_get(state),
