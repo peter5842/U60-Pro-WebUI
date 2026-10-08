@@ -128,6 +128,20 @@ fn lan_ip() -> Result<String, String> {
         .ok_or_else(|| "could not read the router's LAN address".to_string())
 }
 
+/// The settings mihomo's reload API does not apply, from a rendered config.
+fn controller_fields(bytes: &[u8]) -> Vec<String> {
+    let v = serde_json::from_slice::<Value>(bytes).unwrap_or(Value::Null);
+    [
+        "external-controller",
+        "external-controller-unix",
+        "external-ui",
+        "secret",
+    ]
+    .iter()
+    .map(|k| v[*k].as_str().unwrap_or_default().to_string())
+    .collect()
+}
+
 /// The controller secret in a rendered config file ("" when none).
 fn file_secret(bytes: &[u8]) -> String {
     serde_json::from_slice::<Value>(bytes)
@@ -692,14 +706,15 @@ impl Inner {
         self.state = next;
 
         let running = self.alive();
-        // A hot reload keeps the controller's old secret (a subscription
-        // update can change it), so a new secret needs a restart too.
+        // mihomo's reload API applies nodes, groups, rules, DNS and the rest,
+        // but not the controller settings (address, socket, panel, secret);
+        // a subscription update can change the secret, so those restart.
         let new_file = fs::read(service::CONFIG).ok();
-        let secret_changed =
-            previous_file.as_deref().map(file_secret) != new_file.as_deref().map(file_secret);
+        let controller_changed = previous_file.as_deref().map(controller_fields)
+            != new_file.as_deref().map(controller_fields);
         let needs_restart = previous_state.settings.tun != self.state.settings.tun
             || previous_state.settings.mixed_port != self.state.settings.mixed_port
-            || secret_changed;
+            || controller_changed;
 
         let outcome = match (self.state.settings.enabled, running) {
             (true, true) if needs_restart => self.restart(),
@@ -1710,6 +1725,15 @@ mod tests {
         assert_eq!(file_secret(br#"{"secret": "abc", "mode": "rule"}"#), "abc");
         assert_eq!(file_secret(br#"{"mode": "rule"}"#), "");
         assert_eq!(file_secret(b"not json"), "");
+        let a = controller_fields(br#"{"secret": "a", "external-ui": "ui"}"#);
+        assert_ne!(
+            a,
+            controller_fields(br#"{"secret": "b", "external-ui": "ui"}"#)
+        );
+        assert_eq!(
+            a,
+            controller_fields(br#"{"secret": "a", "external-ui": "ui", "rules": []}"#)
+        );
     }
 
     #[test]
