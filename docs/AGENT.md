@@ -126,7 +126,10 @@ release, GitHub SHA-256 verified on both ends).
   agent works whatever secret the config sets. `GET /api/proxy/status` reports
   `panel {installed, url, secret}`. An agent upgrading from the loopback-only
   controller restarts mihomo once (the old process has no socket to reload
-  through).
+  through). A hot reload does not replace the controller's secret, so a config
+  whose secret changed (e.g. after a subscription update) restarts mihomo, and
+  at start the agent checks that the controller accepts the configured secret
+  and restarts it if not.
 - **Listener**: the mixed HTTP/SOCKS port binds the LAN address only.
 - **Process**: started in its own session so agent restarts do not stop it;
   a new agent re-adopts it from `/var/run/mihomo.pid`. The watchdog (5 s tick)

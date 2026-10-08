@@ -128,6 +128,14 @@ fn lan_ip() -> Result<String, String> {
         .ok_or_else(|| "could not read the router's LAN address".to_string())
 }
 
+/// The controller secret in a rendered config file ("" when none).
+fn file_secret(bytes: &[u8]) -> String {
+    serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .and_then(|v| v["secret"].as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 fn random_hex(bytes: usize) -> String {
     use std::io::Read;
     let mut buf = vec![0u8; bytes];
@@ -346,6 +354,15 @@ impl Inner {
             return;
         };
         if fs::read(service::CONFIG).ok().as_deref() == Some(bytes.as_slice()) {
+            // The file is current; is the running controller? (Agents before
+            // this check hot-reloaded secret changes, which mihomo ignores.)
+            let addr = format!("{ip}:{}", config::CONTROLLER_PORT);
+            if service::controller_accepts(&addr, &file_secret(&bytes)) == Some(false) {
+                match self.restart() {
+                    Ok(()) => eprintln!("[mihomo] controller secret was out of date; restarted"),
+                    Err(e) => self.last_error = Some(e),
+                }
+            }
             return;
         }
         let state = self.state.clone();
@@ -675,8 +692,14 @@ impl Inner {
         self.state = next;
 
         let running = self.alive();
+        // A hot reload keeps the controller's old secret (a subscription
+        // update can change it), so a new secret needs a restart too.
+        let new_file = fs::read(service::CONFIG).ok();
+        let secret_changed =
+            previous_file.as_deref().map(file_secret) != new_file.as_deref().map(file_secret);
         let needs_restart = previous_state.settings.tun != self.state.settings.tun
-            || previous_state.settings.mixed_port != self.state.settings.mixed_port;
+            || previous_state.settings.mixed_port != self.state.settings.mixed_port
+            || secret_changed;
 
         let outcome = match (self.state.settings.enabled, running) {
             (true, true) if needs_restart => self.restart(),
@@ -1680,6 +1703,13 @@ mod tests {
         assert!(!inner.route_result(true));
         assert_eq!(inner.health.route_failures, 0);
         assert_eq!(inner.health.route_ok, Some(true));
+    }
+
+    #[test]
+    fn file_secret_reads_the_rendered_config() {
+        assert_eq!(file_secret(br#"{"secret": "abc", "mode": "rule"}"#), "abc");
+        assert_eq!(file_secret(br#"{"mode": "rule"}"#), "");
+        assert_eq!(file_secret(b"not json"), "");
     }
 
     #[test]

@@ -493,6 +493,28 @@ pub fn bypass_remove() {
         .bounded_output();
 }
 
+/// Does mihomo's LAN controller at `addr` accept `secret`? `None` when it
+/// cannot be asked. A hot reload does not replace the controller's secret, so
+/// this catches a running mihomo still using an older one.
+pub fn controller_accepts(addr: &str, secret: &str) -> Option<bool> {
+    use std::io::{Read, Write};
+    let sock: std::net::SocketAddr = addr.parse().ok()?;
+    let mut stream = std::net::TcpStream::connect_timeout(&sock, Duration::from_secs(2)).ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
+    let request = format!(
+        "GET /version HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {secret}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut head = [0u8; 64];
+    let n = stream.read(&mut head).ok()?;
+    let status = String::from_utf8_lossy(&head[..n])
+        .split_whitespace()
+        .nth(1)?
+        .to_string();
+    Some(status == "200")
+}
+
 /// metacubexd is installed (scripts/deploy-mihomo.sh) and served at `/ui`.
 pub fn ui_installed() -> bool {
     Path::new(super::config::UI_DIR).join("index.html").exists()
