@@ -1,22 +1,21 @@
-//! Minimal HTTP/1.1 client for mihomo's loopback external controller.
+//! Minimal HTTP/1.1 client for mihomo's controller on its unix socket.
 //!
-//! The agent deliberately carries no HTTP client stack; the controller is a
-//! trusted local peer speaking plain HTTP, so a small std-only client with a
-//! deadline and a response cap is enough.
+//! mihomo does not apply the `secret` on the unix socket, so the agent works
+//! whatever secret the LAN-facing controller (metacubexd) uses. The agent
+//! carries no HTTP client stack; a small std-only client with a deadline and a
+//! response cap is enough.
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::config::CONTROLLER_ADDR;
+use super::config::CONTROLLER_SOCKET;
 
 const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 
-pub struct Controller<'a> {
-    pub secret: &'a str,
-}
+pub struct Controller;
 
 #[derive(Debug)]
 pub struct Reply {
@@ -45,7 +44,7 @@ impl Reply {
     }
 }
 
-impl Controller<'_> {
+impl Controller {
     pub fn request(
         &self,
         method: &str,
@@ -54,14 +53,12 @@ impl Controller<'_> {
         timeout: Duration,
     ) -> Result<Reply, String> {
         let deadline = Instant::now() + timeout;
-        let addr: SocketAddr = CONTROLLER_ADDR.parse().expect("valid controller address");
-        let mut stream = TcpStream::connect_timeout(&addr, timeout.min(Duration::from_secs(2)))
+        let mut stream = UnixStream::connect(CONTROLLER_SOCKET)
             .map_err(|e| format!("mihomo controller unreachable: {e}"))?;
         let payload = body.map(|b| b.to_string()).unwrap_or_default();
         let mut head = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {CONTROLLER_ADDR}\r\nAuthorization: Bearer {}\r\n\
+            "{method} {path} HTTP/1.1\r\nHost: mihomo\r\n\
              Connection: close\r\nAccept: application/json\r\nContent-Length: {}\r\n",
-            self.secret,
             payload.len()
         );
         if body.is_some() {
@@ -102,7 +99,7 @@ impl Controller<'_> {
     }
 }
 
-fn set_deadline(stream: &TcpStream, deadline: Instant) -> Result<(), String> {
+fn set_deadline(stream: &UnixStream, deadline: Instant) -> Result<(), String> {
     let left = deadline.saturating_duration_since(Instant::now());
     if left.is_zero() {
         return Err("mihomo controller timed out".into());

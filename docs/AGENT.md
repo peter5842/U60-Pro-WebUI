@@ -101,8 +101,8 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
 core installed in `/data/mihomo` by `scripts/deploy-mihomo.sh` (pinned
 release, GitHub SHA-256 verified on both ends).
 
-- **State**: `/data/mihomo/manager.json` (0600) holds settings, subscriptions
-  and the controller secret. The API returns subscription links masked
+- **State**: `/data/mihomo/manager.json` (0600) holds settings and
+  subscriptions. The API returns subscription links masked
   (`https://host/…`); full links never leave the router.
 - **Config**: rendered as JSON from typed state (`config.rs`), validated with
   `mihomo -t`, atomically renamed into `config.yaml`, then hot-reloaded via the
@@ -116,8 +116,17 @@ release, GitHub SHA-256 verified on both ends).
 - **Upgrades**: on start the agent re-renders the config and, if it differs
   from the installed file, validates and hot-reloads it, so fixes in a new
   agent reach an adopted mihomo without a restart.
-- **Controller**: `127.0.0.1:9097` only; the dashboard reaches it through the
-  agent's authenticated routes, never directly.
+- **Controller and panel**: mihomo listens on `<LAN IP>:9097` and serves the
+  metacubexd panel at `/ui/` (installed by `deploy-mihomo.sh` from a pinned,
+  digest-verified release; its `config.js` points it at the page's own origin).
+  The controller's `secret` is the subscription config's own (profile mode),
+  otherwise empty, i.e. **no password**: any LAN device can open the panel and
+  control the proxy. The agent uses the controller's unix socket
+  `/data/mihomo/mihomo.sock` instead, where mihomo applies no secret, so the
+  agent works whatever secret the config sets. `GET /api/proxy/status` reports
+  `panel {installed, url, secret}`. An agent upgrading from the loopback-only
+  controller restarts mihomo once (the old process has no socket to reload
+  through).
 - **Listener**: the mixed HTTP/SOCKS port binds the LAN address only.
 - **Process**: started in its own session so agent restarts do not stop it;
   a new agent re-adopts it from `/var/run/mihomo.pid`. The watchdog (5 s tick)

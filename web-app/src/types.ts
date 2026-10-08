@@ -542,6 +542,8 @@ export interface ProxyStatus {
   route?: string[]
   /** Set when a subscription's own config (groups and rules) is in use. */
   profile?: { id: string; name: string }
+  /** metacubexd, served by mihomo's LAN controller. `secret` is the live config's (absent = none). */
+  panel?: { installed: boolean; url?: string; secret?: string }
   /** Forwarding check through mihomo (undefined: not checked yet or the WAN is down). */
   health?: {
     ok?: boolean

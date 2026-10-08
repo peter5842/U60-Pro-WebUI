@@ -8,9 +8,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// mihomo's external controller. Loopback only: the agent proxies every call
-/// behind its own auth, so the controller is never reachable from the LAN.
-pub const CONTROLLER_ADDR: &str = "127.0.0.1:9097";
+/// mihomo's external controller on the LAN address, for the metacubexd panel
+/// it serves at `/ui`. Its secret is the subscription config's own, else none.
+pub const CONTROLLER_PORT: u16 = 9097;
+/// The controller's unix socket, used by the agent (no secret on the socket).
+pub const CONTROLLER_SOCKET: &str = "/data/mihomo/mihomo.sock";
+/// metacubexd, installed by scripts/deploy-mihomo.sh (`external-ui: ui`).
+pub const UI_DIR: &str = "/data/mihomo/ui";
 /// TUN interface name (also used in the runtime firewall rules).
 pub const TUN_DEVICE: &str = "mihomo";
 /// The only interface whose traffic the TUN captures. The router's own
@@ -249,13 +253,29 @@ fn preset_rules(preset: Preset) -> Vec<&'static str> {
 /// Render the full mihomo config for `state`. `lan_ip` is the router's LAN
 /// address; the proxy listener binds only to it. With a subscription profile,
 /// `profile` is that subscription's parsed config.
-pub fn render(state: &State, lan_ip: &str, profile: Option<&Value>) -> Result<Value, String> {
+/// `ui`: metacubexd is installed and is served at `/ui`.
+pub fn render(
+    state: &State,
+    lan_ip: &str,
+    profile: Option<&Value>,
+    ui: bool,
+) -> Result<Value, String> {
     let mut config = match profile {
         Some(base) => sanitize_profile(base)?,
         None => managed(state),
     };
-    apply_runtime(&mut config, state, lan_ip);
+    let secret = profile.map(profile_secret).unwrap_or_default();
+    apply_runtime(&mut config, state, lan_ip, &secret, ui);
     Ok(config)
+}
+
+/// The controller secret a subscription config sets ("" when none).
+pub fn profile_secret(base: &Value) -> String {
+    match base.get("secret") {
+        Some(Value::String(s)) => s.trim().to_string(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => String::new(),
+    }
 }
 
 /// The agent's own config: subscriptions as node providers plus a rule preset.
@@ -368,7 +388,7 @@ pub fn sanitize_profile(base: &Value) -> Result<Value, String> {
 }
 
 /// Settings the agent always owns, whatever the config source.
-fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
+fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, ui: bool) {
     let s = &state.settings;
     let obj = config.as_object_mut().expect("config is an object");
     obj.insert("mixed-port".into(), json!(s.mixed_port));
@@ -377,8 +397,15 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str) {
     obj.insert("mode".into(), json!(s.mode.as_str()));
     obj.insert("log-level".into(), json!("warning"));
     obj.insert("find-process-mode".into(), json!("off"));
-    obj.insert("external-controller".into(), json!(CONTROLLER_ADDR));
-    obj.insert("secret".into(), json!(state.secret));
+    obj.insert(
+        "external-controller".into(),
+        json!(format!("{lan_ip}:{CONTROLLER_PORT}")),
+    );
+    obj.insert("external-controller-unix".into(), json!(CONTROLLER_SOCKET));
+    obj.insert("secret".into(), json!(secret));
+    if ui {
+        obj.insert("external-ui".into(), json!("ui"));
+    }
     // Rule data is installed and updated by scripts/deploy-mihomo.sh.
     obj.insert("geo-auto-update".into(), json!(false));
     // The firmware keeps local time in the system clock labelled as UTC (8 h
@@ -463,13 +490,19 @@ mod tests {
     #[test]
     fn no_subscriptions_renders_direct_only_proxy_group() {
         let state = State::default();
-        let c = render(&state, "192.168.0.1", None).unwrap();
+        let c = render(&state, "192.168.0.1", None, false).unwrap();
         assert_eq!(c["proxy-groups"].as_array().unwrap().len(), 1);
         assert_eq!(c["proxy-groups"][0]["proxies"], json!(["DIRECT"]));
         assert!(c["proxy-providers"].as_object().unwrap().is_empty());
         assert!(c.get("tun").is_none());
         assert_eq!(c["bind-address"], "192.168.0.1");
-        assert_eq!(c["external-controller"], CONTROLLER_ADDR);
+        // The managed config has no secret: the panel opens without one.
+        assert_eq!(c["external-controller"], "192.168.0.1:9097");
+        assert_eq!(c["external-controller-unix"], CONTROLLER_SOCKET);
+        assert_eq!(c["secret"], "");
+        assert!(c.get("external-ui").is_none());
+        let with_ui = render(&state, "192.168.0.1", None, true).unwrap();
+        assert_eq!(with_ui["external-ui"], "ui");
     }
 
     #[test]
@@ -478,7 +511,7 @@ mod tests {
             subscriptions: vec![sub("aaaa0001", true), sub("aaaa0002", false)],
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1", None).unwrap();
+        let c = render(&state, "192.168.0.1", None, false).unwrap();
         let providers = c["proxy-providers"].as_object().unwrap();
         assert_eq!(providers.len(), 1);
         let p = &providers["sub-aaaa0001"];
@@ -497,7 +530,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1", None).unwrap();
+        let c = render(&state, "192.168.0.1", None, false).unwrap();
         assert_eq!(c["tun"]["device"], TUN_DEVICE);
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
         assert_eq!(c["tun"]["dns-hijack"], json!([]));
@@ -521,12 +554,19 @@ mod tests {
     }
 
     #[test]
+    fn profile_secret_accepts_strings_and_numbers() {
+        assert_eq!(profile_secret(&json!({"secret": " abc "})), "abc");
+        assert_eq!(profile_secret(&json!({"secret": 123456})), "123456");
+        assert_eq!(profile_secret(&json!({})), "");
+    }
+
+    #[test]
     fn profile_keeps_groups_rules_and_dns_upstreams() {
         let state = State {
             secret: "s".into(),
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
         assert_eq!(c["proxy-groups"][0]["name"], "节点选择");
         assert_eq!(c["rules"][1], "MATCH,节点选择");
         assert!(c["rule-providers"]["apple"].is_object());
@@ -541,15 +581,17 @@ mod tests {
             secret: "s".into(),
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
         for key in ["socks-port", "port", "authentication", "external-ui", "tun"] {
             assert!(c.get(key).is_none(), "{key} must be dropped");
         }
         assert!(c["dns"].get("listen").is_none());
         assert_eq!(c["mixed-port"], DEFAULT_PORT);
         assert_eq!(c["bind-address"], "192.168.0.1");
-        assert_eq!(c["external-controller"], CONTROLLER_ADDR);
-        assert_eq!(c["secret"], "s");
+        // Our controller address and socket; the provider's own secret.
+        assert_eq!(c["external-controller"], "192.168.0.1:9097");
+        assert_eq!(c["external-controller-unix"], CONTROLLER_SOCKET);
+        assert_eq!(c["secret"], "theirs");
         assert_eq!(c["find-process-mode"], "off");
         assert_eq!(c["geo-auto-update"], false);
         assert_eq!(c["profile"]["store-selected"], true);
@@ -567,7 +609,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
         assert_eq!(c["tun"]["stack"], "mixed");
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
         assert_eq!(c["tun"]["dns-hijack"], json!([]));
@@ -580,7 +622,7 @@ mod tests {
     #[test]
     fn without_tun_the_provider_sniffer_is_untouched() {
         let state = State::default();
-        let c = render(&state, "192.168.0.1", Some(&airport())).unwrap();
+        let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
         assert!(c["sniffer"].get("override-destination").is_none());
         assert!(c["sniffer"]["sniff"]["TLS"]
             .get("override-destination")
@@ -591,8 +633,14 @@ mod tests {
     fn profile_without_groups_or_rules_is_rejected() {
         let state = State::default();
         let nodes_only = json!({"proxies": [{"name": "HK", "type": "ss"}]});
-        assert!(render(&state, "192.168.0.1", Some(&nodes_only)).is_err());
-        assert!(render(&state, "192.168.0.1", Some(&json!(["not", "a", "map"]))).is_err());
+        assert!(render(&state, "192.168.0.1", Some(&nodes_only), false).is_err());
+        assert!(render(
+            &state,
+            "192.168.0.1",
+            Some(&json!(["not", "a", "map"])),
+            false
+        )
+        .is_err());
     }
 
     #[test]

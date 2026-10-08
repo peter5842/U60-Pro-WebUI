@@ -1893,6 +1893,7 @@ def proxy_status():
         "enabled": p["enabled"], "mode": p["mode"], "preset": p["preset"], "tun": p["tun"],
         "profile": {"id": profile["id"], "name": profile["name"]} if profile else None,
         "tun_active": p["tun"] and running, "mixed_port": p["mixed_port"], "lan_ip": "192.168.0.1",
+        "panel": {"installed": True, "url": "http://192.168.0.1:9097/ui/", "secret": None},
         "cn_bypass": p["cn_bypass"], "cn_bypass_active": p["tun"] and running and p["cn_bypass"],
         "cn_bypass_available": True,
         "proxy_address": f"192.168.0.1:{p['mixed_port']}", "pac_url": "http://192.168.0.1:9090/proxy.pac",

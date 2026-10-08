@@ -493,6 +493,11 @@ pub fn bypass_remove() {
         .bounded_output();
 }
 
+/// metacubexd is installed (scripts/deploy-mihomo.sh) and served at `/ui`.
+pub fn ui_installed() -> bool {
+    Path::new(super::config::UI_DIR).join("index.html").exists()
+}
+
 pub fn tun_active() -> bool {
     Path::new("/sys/class/net").join(TUN_DEVICE).exists()
 }

@@ -61,6 +61,7 @@ export function mapProxyStatus(d: Record<string, unknown>): ProxyStatus {
     traffic: mapTraffic(d.traffic),
     route: route?.length ? route : undefined,
     profile,
+    panel: mapPanel(d.panel),
     health: isObj(d.health)
       ? {
           ok: boolLike(d.health.ok),
@@ -155,4 +156,10 @@ export function mapProxyDelays(d: Record<string, unknown>): Record<string, numbe
     }
   }
   return out
+}
+
+function mapPanel(v: unknown): ProxyStatus['panel'] {
+  if (!v || typeof v !== 'object') return undefined
+  const p = v as Record<string, unknown>
+  return { installed: boolLike(p.installed) ?? false, url: nonEmptyStr(p.url), secret: nonEmptyStr(p.secret) }
 }

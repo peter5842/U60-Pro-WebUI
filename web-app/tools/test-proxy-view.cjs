@@ -39,6 +39,16 @@ test('status mapper validates fields and flattens the selected route', () => {
   assert.deepEqual(view.serviceState(s), { label: 'Running', tone: 'ok' })
 })
 
+test('panel info keeps the secret only when the config sets one', () => {
+  assert.deepEqual(map.mapProxyStatus({ panel: { installed: true, url: 'http://192.168.0.1:9097/ui/', secret: '' } }).panel, {
+    installed: true,
+    url: 'http://192.168.0.1:9097/ui/',
+    secret: undefined,
+  })
+  assert.equal(map.mapProxyStatus({ panel: { installed: 1, secret: 'abc' } }).panel.secret, 'abc')
+  assert.equal(map.mapProxyStatus({}).panel, undefined)
+})
+
 test('service state distinguishes missing core, failing and stopped', () => {
   const base = map.mapProxyStatus({ installed: true })
   assert.equal(view.serviceState(null).label, 'Unknown')

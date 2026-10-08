@@ -5,6 +5,7 @@ import type { ProxyPreset, ProxyStatus } from '../../types'
 import { Button, Field, Input, Segmented, Toggle } from '../../ui/controls'
 import { confirm, toast, toastError } from '../../ui/feedback'
 import { Card, Chip, InlineStatus, Row, Skeleton } from '../../ui/primitives'
+import CopyField from './CopyField'
 import { PRESET_OPTIONS, validatePort } from './proxyView'
 import { t } from '../../i18n'
 
@@ -140,6 +141,37 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
             label={t('Mainland traffic bypasses TUN')}
           />
         </div>
+      </Card>
+
+      <Card title={t('Web panel (metacubexd)')}>
+        {s.panel?.installed && s.panel.url ? (
+          <div className="space-y-3">
+            <p className="text-meta text-ink2">
+              {t('The full mihomo panel: live connections, logs, rules and rule-set updates. It talks to mihomo directly, so every device on the LAN that opens it can control the proxy.')}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={s.panel.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-ctl bg-accent px-3 py-1.5 text-body font-semibold text-white hover:opacity-90"
+              >
+                {t('Open metacubexd')}
+              </a>
+              <span className="tnum font-mono text-meta text-ink2">{s.panel.url}</span>
+            </div>
+            {s.panel.secret ? (
+              <CopyField label={t('Panel secret')} value={s.panel.secret} hint={t('From the subscription config. metacubexd asks for it the first time.')} />
+            ) : (
+              <Row label={t('Panel secret')} value={t('None — the config sets no secret')} />
+            )}
+            {!s.running && <InlineStatus kind="info" live={false}>{t('The panel works while the proxy is running.')}</InlineStatus>}
+          </div>
+        ) : (
+          <InlineStatus kind="info" live={false}>
+            {t('metacubexd is not installed on the router; run scripts/deploy-mihomo.sh once.')}
+          </InlineStatus>
+        )}
       </Card>
 
       <Card title={t('Proxy port')}>

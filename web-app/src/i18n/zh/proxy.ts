@@ -234,4 +234,15 @@ export const proxy: Record<string, string> = {
   'The mainland IP list is not installed on the router; run scripts/deploy-mihomo.sh once.': '路由器上还没有安装大陆 IP 列表，请运行一次 scripts/deploy-mihomo.sh。',
   'Mainland bypass on': '已开启国内流量绕过',
   'Mainland bypass off': '已关闭国内流量绕过',
+
+  // metacubexd panel
+  'Web panel (metacubexd)': '管理面板（metacubexd）',
+  'The full mihomo panel: live connections, logs, rules and rule-set updates. It talks to mihomo directly, so every device on the LAN that opens it can control the proxy.':
+    '完整的 mihomo 面板：实时连接、日志、规则和规则集更新。它直接连接 mihomo，局域网内任何打开它的设备都能控制代理。',
+  'Open metacubexd': '打开 metacubexd',
+  'Panel secret': '面板密钥',
+  'From the subscription config. metacubexd asks for it the first time.': '来自订阅配置，首次打开 metacubexd 时需要填写。',
+  'None — the config sets no secret': '无（配置未设置 secret）',
+  'The panel works while the proxy is running.': '代理运行时才能使用面板。',
+  'metacubexd is not installed on the router; run scripts/deploy-mihomo.sh once.': '路由器上还没有安装 metacubexd，请运行一次 scripts/deploy-mihomo.sh。',
 }

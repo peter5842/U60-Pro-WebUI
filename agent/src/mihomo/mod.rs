@@ -6,8 +6,7 @@
 //! - profile: one subscription's own full config (groups, rules, rule sets)
 //!   with the router-specific keys replaced (`config::sanitize_profile`).
 //!
-//! State lives in /data/mihomo/manager.json (0600: it holds subscription URLs
-//! and the controller secret). Every change follows render → `mihomo -t` →
+//! State lives in /data/mihomo/manager.json (0600: it holds subscription URLs). Every change follows render → `mihomo -t` →
 //! atomic replace → hot reload, and is rolled back when the reload fails.
 
 // A guard in an `if let`/`match` scrutinee lives for the whole block (edition
@@ -73,6 +72,8 @@ struct Inner {
     health: Health,
     /// The mainland bypass rules were in place at the last check.
     bypass_active: bool,
+    /// The live config's controller secret, cached by file modification time.
+    panel_secret: Option<(std::time::SystemTime, String)>,
 }
 
 /// Is mihomo still forwarding? (A live process can hang with the TUN up,
@@ -199,6 +200,7 @@ impl Manager {
                 traffic: None,
                 firewall_checked: None,
                 bypass_active: false,
+                panel_secret: None,
                 profile_attempt: None,
                 health: Health::default(),
             }),
@@ -238,10 +240,10 @@ impl Manager {
                     me.lock().probe_result(probe);
                     // mihomo forwards; is the selected node path working too?
                     let route_due = me.lock().route_probe_due();
-                    if let (true, Some(secret)) = (forwarding, route_due) {
+                    if forwarding && route_due {
                         let ok = service::probe_route(&proxy);
                         if me.lock().route_result(ok) {
-                            retest_auto_groups(&secret);
+                            retest_auto_groups();
                         }
                     }
                 }
@@ -290,8 +292,23 @@ impl Manager {
 }
 
 impl Inner {
-    fn secret(&self) -> String {
-        self.state.secret.clone()
+    /// The secret metacubexd needs: whatever the live config sets ("" = none).
+    fn live_panel_secret(&mut self) -> String {
+        let Ok(modified) = fs::metadata(service::CONFIG).and_then(|m| m.modified()) else {
+            return String::new();
+        };
+        if let Some((at, secret)) = &self.panel_secret {
+            if *at == modified {
+                return secret.clone();
+            }
+        }
+        let secret = fs::read(service::CONFIG)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| v["secret"].as_str().map(str::to_string))
+            .unwrap_or_default();
+        self.panel_secret = Some((modified, secret.clone()));
+        secret
     }
 
     fn alive(&mut self) -> bool {
@@ -321,7 +338,8 @@ impl Inner {
             },
             None => None,
         };
-        let Ok(rendered) = config::render(&self.state, &ip, base.as_ref()) else {
+        let Ok(rendered) = config::render(&self.state, &ip, base.as_ref(), service::ui_installed())
+        else {
             return;
         };
         let Ok(bytes) = serde_json::to_vec_pretty(&rendered) else {
@@ -331,7 +349,16 @@ impl Inner {
             return;
         }
         let state = self.state.clone();
-        match self.write_config(&state).and_then(|_| self.reload()) {
+        // An older agent ran mihomo without the controller socket: restart it
+        // once instead of hot-reloading (which needs the socket).
+        let socket = Path::new(config::CONTROLLER_SOCKET).exists();
+        match self.write_config(&state).and_then(|_| {
+            if socket {
+                self.reload()
+            } else {
+                self.restart()
+            }
+        }) {
             Ok(()) => eprintln!("[mihomo] config updated to this agent version and reloaded"),
             Err(e) => {
                 eprintln!("[mihomo] could not apply the updated config: {e}");
@@ -411,12 +438,12 @@ impl Inner {
         }
     }
 
-    /// The controller secret when the proxy route should be probed: not in
-    /// direct mode, and only when there are nodes to route through.
-    fn route_probe_due(&self) -> Option<String> {
+    /// Whether the proxy route should be probed: not in direct mode, and only
+    /// when there are nodes to route through.
+    fn route_probe_due(&self) -> bool {
         let has_nodes = self.state.settings.profile.is_some()
             || self.state.subscriptions.iter().any(|s| s.enabled);
-        (self.state.settings.mode != Mode::Direct && has_nodes).then(|| self.secret())
+        self.state.settings.mode != Mode::Direct && has_nodes
     }
 
     /// Record a proxy-route check; true when the auto groups should be re-tested.
@@ -567,7 +594,7 @@ impl Inner {
             Some(id) => Some(profile::load(id)?),
             None => None,
         };
-        let rendered = config::render(next, &ip, base.as_ref())?;
+        let rendered = config::render(next, &ip, base.as_ref(), service::ui_installed())?;
         let bytes = serde_json::to_vec_pretty(&rendered).map_err(|e| e.to_string())?;
         atomic_write(Path::new(service::STAGED), &bytes)
             .map_err(|e| format!("cannot write config: {e}"))?;
@@ -681,8 +708,7 @@ impl Inner {
     }
 
     fn reload(&self) -> Result<(), String> {
-        let secret = self.secret();
-        let reply = Controller { secret: &secret }.request(
+        let reply = Controller.request(
             "PUT",
             "/configs?force=true",
             Some(&json!({"path": service::CONFIG})),
@@ -705,8 +731,7 @@ impl Inner {
         let mut traffic = Value::Null;
         let mut route = Value::Null;
         if running {
-            let secret = self.secret();
-            let ctl = Controller { secret: &secret };
+            let ctl = Controller;
             if let Ok(c) = ctl.get("/connections") {
                 let up = c["uploadTotal"].as_u64().unwrap_or(0);
                 let down = c["downloadTotal"].as_u64().unwrap_or(0);
@@ -748,6 +773,11 @@ impl Inner {
             "preset": s.preset,
             "profile": profile,
             "tun": s.tun,
+            "panel": {
+                "installed": service::ui_installed(),
+                "url": ip.as_ref().map(|ip| format!("http://{ip}:{}/ui/", config::CONTROLLER_PORT)),
+                "secret": Some(self.live_panel_secret()).filter(|s| !s.is_empty()),
+            },
             "tun_active": service::tun_active(),
             "cn_bypass": s.cn_bypass,
             "cn_bypass_active": self.bypass_active,
@@ -775,8 +805,8 @@ impl Inner {
 /// Ask every automatic group (url-test, fallback, load-balance) to test its
 /// members now, so a dead node is dropped without waiting for the group's own
 /// interval. Runs without the manager lock; each test is bounded.
-fn retest_auto_groups(secret: &str) {
-    let ctl = Controller { secret };
+fn retest_auto_groups() {
+    let ctl = Controller;
     let Ok(p) = ctl.get("/proxies") else { return };
     let groups: Vec<(String, String)> = p["proxies"]
         .as_object()
@@ -1038,8 +1068,7 @@ impl Manager {
     pub fn subscriptions(&self) -> (u16, Value) {
         let mut inner = self.lock();
         let providers = if inner.alive() {
-            let secret = inner.secret();
-            Controller { secret: &secret }
+            Controller
                 .get("/providers/proxies")
                 .ok()
                 .and_then(|v| v.get("providers").cloned())
@@ -1319,7 +1348,7 @@ impl Manager {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let (secret, running, profile_id, targets) = {
+        let (running, profile_id, targets) = {
             let mut inner = self.lock();
             let targets: Vec<Subscription> = match v["id"].as_str() {
                 Some(id) => match inner.find_sub(id) {
@@ -1334,14 +1363,9 @@ impl Manager {
                     .cloned()
                     .collect(),
             };
-            (
-                inner.secret(),
-                inner.alive(),
-                inner.state.settings.profile.clone(),
-                targets,
-            )
+            (inner.alive(), inner.state.settings.profile.clone(), targets)
         };
-        let ctl = Controller { secret: &secret };
+        let ctl = Controller;
         let mut results = serde_json::Map::new();
         for sub in &targets {
             let outcome = if profile_id.as_deref() == Some(sub.id.as_str()) {
@@ -1382,7 +1406,7 @@ impl Manager {
     /// GET /api/proxy/groups — every proxy group in config order with its
     /// members, plus every member proxy with its last delay.
     pub fn groups(&self) -> (u16, Value) {
-        let (secret, names) = {
+        let names = {
             let mut inner = self.lock();
             if !inner.alive() {
                 return (
@@ -1396,9 +1420,9 @@ impl Manager {
                 .iter()
                 .map(|s| (s.provider(), (s.id.clone(), s.name.clone())))
                 .collect();
-            (inner.secret(), names)
+            names
         };
-        let ctl = Controller { secret: &secret };
+        let ctl = Controller;
         let proxies = match ctl.get("/proxies") {
             Ok(p) => p["proxies"].clone(),
             Err(e) => return (503, json!({"ok": false, "error": e})),
@@ -1467,14 +1491,10 @@ impl Manager {
         let Some(proxy) = v["proxy"].as_str().filter(|p| !p.is_empty()) else {
             return bad("proxy is required");
         };
-        let secret = {
-            let mut inner = self.lock();
-            if !inner.alive() {
-                return conflict("the proxy is not running");
-            }
-            inner.secret()
-        };
-        let ctl = Controller { secret: &secret };
+        if !self.lock().alive() {
+            return conflict("the proxy is not running");
+        }
+        let ctl = Controller;
         let path = format!("/proxies/{}", segment(group));
         match ctl.get(&path) {
             Ok(g) if g["type"] == "Selector" => {
@@ -1511,14 +1531,10 @@ impl Manager {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let secret = {
-            let mut inner = self.lock();
-            if !inner.alive() {
-                return conflict("the proxy is not running");
-            }
-            inner.secret()
-        };
-        let ctl = Controller { secret: &secret };
+        if !self.lock().alive() {
+            return conflict("the proxy is not running");
+        }
+        let ctl = Controller;
         let url = config::HEALTH_URL.replace(':', "%3A").replace('/', "%2F");
         if let Some(group) = v["group"].as_str().filter(|g| !g.is_empty()) {
             let path = format!("/group/{}/delay?url={url}&timeout=5000", segment(group));
@@ -1587,6 +1603,7 @@ mod tests {
                     traffic: None,
                     firewall_checked: None,
                     bypass_active: false,
+                    panel_secret: None,
                     profile_attempt: None,
                     health: Health::default(),
                 }),
@@ -1669,14 +1686,11 @@ mod tests {
     fn route_probe_skips_direct_mode_and_empty_configs() {
         let m = Manager::new_for_tests();
         let mut inner = m.lock();
-        assert!(
-            inner.route_probe_due().is_none(),
-            "no nodes to route through"
-        );
+        assert!(!inner.route_probe_due(), "no nodes to route through");
         inner.state.settings.profile = Some("x".into());
-        assert!(inner.route_probe_due().is_some());
+        assert!(inner.route_probe_due());
         inner.state.settings.mode = Mode::Direct;
-        assert!(inner.route_probe_due().is_none());
+        assert!(!inner.route_probe_due());
     }
 
     #[test]
