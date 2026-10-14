@@ -22,6 +22,8 @@ pub const STAGED: &str = "/data/mihomo/config.staged.yaml";
 pub const LOG: &str = "/tmp/mihomo.log";
 const PIDFILE: &str = "/var/run/mihomo.pid";
 const LOG_CAP: u64 = 1024 * 1024;
+/// Open-file limit for mihomo (kernel nr_open allows up to 1M).
+const NOFILE_LIMIT: libc::rlim_t = 65536;
 const FW_COMMENT: &str = "mihomo-tun";
 /// sing-tun's default ip rule priority range and route table.
 const RULE_PREFS: std::ops::RangeInclusive<u32> = 9000..=9099;
@@ -105,14 +107,22 @@ pub fn spawn() -> Result<Process, String> {
         .map_err(|e| format!("cannot open {LOG}: {e}"))?;
     let mut cmd = Command::new(BINARY);
     cmd.args(["-d", DIR, "-f", CONFIG])
-        .env("GOMEMLIMIT", "160MiB")
+        .env("GOMEMLIMIT", "320MiB")
         .stdin(Stdio::null())
         .stdout(log)
         .stderr(log_err);
     // Own session: an agent restart (deploy, crash) must not take mihomo with it.
+    // The inherited 1024/4096 fd limit is far too low for a TUN gateway: every
+    // proxied UDP flow holds a socket, and one P2P client exhausted it, after
+    // which mihomo failed every new connection ("too many open files").
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
+            let limit = libc::rlimit {
+                rlim_cur: NOFILE_LIMIT,
+                rlim_max: NOFILE_LIMIT,
+            };
+            libc::setrlimit(libc::RLIMIT_NOFILE, &limit);
             Ok(())
         });
     }
