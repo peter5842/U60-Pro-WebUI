@@ -117,8 +117,10 @@ release, GitHub SHA-256 verified on both ends).
   from the installed file, validates and hot-reloads it, so fixes in a new
   agent reach an adopted mihomo without a restart.
 - **Controller and panel**: mihomo listens on `<LAN IP>:9097` and serves the
-  metacubexd panel at `/ui/` (installed by `deploy-mihomo.sh` from a pinned,
-  digest-verified release; its `config.js` points it at the page's own origin).
+  zashboard panel at `/ui/` (installed by `deploy-mihomo.sh` from a pinned,
+  digest-verified release; the dashboard's link passes the controller address
+  and secret as zashboard's `hostname`/`port`/`secret` query parameters and
+  hides its core-upgrade and TUN switches, which the agent owns).
   The controller's `secret` is the subscription config's own (profile mode),
   otherwise empty, i.e. **no password**: any LAN device can open the panel and
   control the proxy. The agent uses the controller's unix socket

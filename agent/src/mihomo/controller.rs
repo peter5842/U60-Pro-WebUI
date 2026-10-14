@@ -1,7 +1,7 @@
 //! Minimal HTTP/1.1 client for mihomo's controller on its unix socket.
 //!
 //! mihomo does not apply the `secret` on the unix socket, so the agent works
-//! whatever secret the LAN-facing controller (metacubexd) uses. The agent
+//! whatever secret the LAN-facing controller (zashboard) uses. The agent
 //! carries no HTTP client stack; a small std-only client with a deadline and a
 //! response cap is enough.
 

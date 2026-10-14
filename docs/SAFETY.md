@@ -183,7 +183,7 @@ regained and this is deployed again.
   agent re-applies them after boot (never via firewall includes or init.d).
   The router's own traffic and management ports are never routed into the
   TUN, and the forwarding watchdog turns TUN off if mihomo stops forwarding.
-  mihomo's controller listens on the LAN address (`:9097`, metacubexd at
+  mihomo's controller listens on the LAN address (`:9097`, zashboard at
   `/ui/`) with the subscription config's secret, or none; the wan zone rejects
   input, so it is LAN-only. The agent uses the unix socket in `/data/mihomo`
   (directory 0700).

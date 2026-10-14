@@ -6,7 +6,7 @@ import { Button, Field, Input, Segmented, Toggle } from '../../ui/controls'
 import { confirm, toast, toastError } from '../../ui/feedback'
 import { Card, Chip, InlineStatus, Row, Skeleton } from '../../ui/primitives'
 import CopyField from './CopyField'
-import { PRESET_OPTIONS, validatePort } from './proxyView'
+import { PRESET_OPTIONS, panelLink, validatePort } from './proxyView'
 import { t } from '../../i18n'
 
 type Busy = 'preset' | 'tun' | 'bypass' | 'port' | null
@@ -143,7 +143,7 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
         </div>
       </Card>
 
-      <Card title={t('Web panel (metacubexd)')}>
+      <Card title={t('Web panel (zashboard)')}>
         {s.panel?.installed && s.panel.url ? (
           <div className="space-y-3">
             <p className="text-meta text-ink2">
@@ -151,17 +151,17 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <a
-                href={s.panel.url}
+                href={panelLink(s.panel) ?? s.panel.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center rounded-ctl bg-accent px-3 py-1.5 text-body font-semibold text-white hover:opacity-90"
               >
-                {t('Open metacubexd')}
+                {t('Open zashboard')}
               </a>
               <span className="tnum font-mono text-meta text-ink2">{s.panel.url}</span>
             </div>
             {s.panel.secret ? (
-              <CopyField label={t('Panel secret')} value={s.panel.secret} hint={t('From the subscription config. metacubexd asks for it the first time.')} />
+              <CopyField label={t('Panel secret')} value={s.panel.secret} hint={t('From the subscription config. The button passes it to zashboard; enter it there only when opening the address directly.')} />
             ) : (
               <Row label={t('Panel secret')} value={t('None — the config sets no secret')} />
             )}
@@ -169,7 +169,7 @@ export default function SettingsTab({ status }: { status: PollResult<ProxyStatus
           </div>
         ) : (
           <InlineStatus kind="info" live={false}>
-            {t('metacubexd is not installed on the router; run scripts/deploy-mihomo.sh once.')}
+            {t('zashboard is not installed on the router; run scripts/deploy-mihomo.sh once.')}
           </InlineStatus>
         )}
       </Card>

@@ -4,7 +4,7 @@
 #   bash scripts/deploy-mihomo.sh [--gateway ADDRESS] [--dry-run]
 #
 # Downloads a pinned mihomo release, the latest MetaCubeX geodata, a pinned
-# mainland IPv4 list (for the TUN's mainland bypass) and a pinned metacubexd web
+# mainland IPv4 list (for the TUN's mainland bypass) and a pinned zashboard web
 # panel on this computer, verifies every file against a published or pinned
 # SHA-256, then
 # stages each file in /data/mihomo, re-checks the hash on the device and moves
@@ -15,8 +15,10 @@ set -euo pipefail
 MIHOMO_VERSION=v1.19.32
 # MetaCubeX/meta-rules-dat geo/geoip/cn.list at a fixed commit (bump both together).
 CN_LIST_COMMIT=989c8194a8c01e8d85ab2c33aa7d8af3849d3393
-# metacubexd web panel, served by mihomo at http://<router>:9097/ui/.
-METACUBEXD_VERSION=v1.273.1
+# zashboard web panel, served by mihomo at http://<router>:9097/ui/. The no-fonts
+# build uses the system fonts (PingFang etc.) and is a third of the full size.
+ZASHBOARD_VERSION=v3.29.1
+ZASHBOARD_ASSET=dist-no-fonts.zip
 CN_LIST_SHA256=1c1b257518487ab565e9c91657526b417a2983fe353c4f50a013372aff2e1f18
 GATEWAY="${ZTE_GATEWAY:-192.168.0.1}"
 DRY_RUN=0
@@ -71,15 +73,15 @@ for file in geoip.metadb geoip.dat geosite.dat; do
 done
 fetch "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/$CN_LIST_COMMIT/geo/geoip/cn.list" "$WORK/cn.list"
 [ "$(sha "$WORK/cn.list")" = "$CN_LIST_SHA256" ] || { echo "cn.list failed verification" >&2; exit 1; }
-echo "Downloading metacubexd $METACUBEXD_VERSION…"
-fetch "https://github.com/MetaCubeX/metacubexd/releases/download/$METACUBEXD_VERSION/compressed-dist.tgz" "$WORK/ui.tgz"
-[ "$(sha "$WORK/ui.tgz")" = "$(asset_digest MetaCubeX/metacubexd "$METACUBEXD_VERSION" compressed-dist.tgz)" ] \
-    || { echo "metacubexd download failed verification" >&2; exit 1; }
-mkdir -p "$WORK/ui"
-tar xzf "$WORK/ui.tgz" -C "$WORK/ui"
-[ -f "$WORK/ui/index.html" ] || { echo "metacubexd archive has no index.html" >&2; exit 1; }
-# Connect to the controller that serves the page (http://<router>:9097).
-printf "window.__METACUBEXD_CONFIG__ = { defaultBackendURL: window.location.origin, githubToken: '' }\n" > "$WORK/ui/config.js"
+echo "Downloading zashboard $ZASHBOARD_VERSION…"
+fetch "https://github.com/Zephyruso/zashboard/releases/download/$ZASHBOARD_VERSION/$ZASHBOARD_ASSET" "$WORK/ui.zip"
+[ "$(sha "$WORK/ui.zip")" = "$(asset_digest Zephyruso/zashboard "$ZASHBOARD_VERSION" "$ZASHBOARD_ASSET")" ] \
+    || { echo "zashboard download failed verification" >&2; exit 1; }
+unzip -q "$WORK/ui.zip" -d "$WORK/ui.unpacked"
+[ -f "$WORK/ui.unpacked/dist/index.html" ] || { echo "zashboard archive has no dist/index.html" >&2; exit 1; }
+mv "$WORK/ui.unpacked/dist" "$WORK/ui"
+# The dashboard's panel link passes the controller address and secret as query
+# parameters, so zashboard needs no config file.
 UI_SUM=$(cd "$WORK/ui" && find . -type f | LC_ALL=C sort | while read -r f; do shasum -a 256 "$f" | awk '{print $1}'; done | shasum -a 256 | awk '{print $1}')
 echo "All downloads verified."
 
@@ -96,7 +98,7 @@ for file in mihomo geoip.metadb geoip.dat geosite.dat cn.list; do
         chmod 700 /data/mihomo/$file.new; mv -f /data/mihomo/$file.new /data/mihomo/$file" < "$WORK/$file"
     echo "  installed $file"
 done
-# metacubexd: unpack beside the live copy, compare a manifest of per-file
+# zashboard: unpack beside the live copy, compare a manifest of per-file
 # hashes, then swap directories so mihomo never serves a half-written panel.
 COPYFILE_DISABLE=1 tar czf - -C "$WORK/ui" . | "${SSH[@]}" "set -e; rm -rf /data/mihomo/ui.new; mkdir -p /data/mihomo/ui.new; \
     tar xzf - -C /data/mihomo/ui.new; \
@@ -104,6 +106,6 @@ COPYFILE_DISABLE=1 tar czf - -C "$WORK/ui" . | "${SSH[@]}" "set -e; rm -rf /data
     test \"\$sum\" = $UI_SUM; \
     rm -rf /data/mihomo/ui.old; if [ -d /data/mihomo/ui ]; then mv /data/mihomo/ui /data/mihomo/ui.old; fi; \
     mv /data/mihomo/ui.new /data/mihomo/ui; rm -rf /data/mihomo/ui.old"
-echo "  installed metacubexd $METACUBEXD_VERSION (http://$GATEWAY:9097/ui/)"
+echo "  installed zashboard $ZASHBOARD_VERSION (http://$GATEWAY:9097/ui/)"
 "${SSH[@]}" '/data/mihomo/mihomo -v | head -1'
 echo "Done. If mihomo was running, restart it from the dashboard (Proxy → Restart) to use the new core."

@@ -525,7 +525,7 @@ pub fn controller_accepts(addr: &str, secret: &str) -> Option<bool> {
     Some(status == "200")
 }
 
-/// metacubexd is installed (scripts/deploy-mihomo.sh) and served at `/ui`.
+/// zashboard is installed (scripts/deploy-mihomo.sh) and served at `/ui`.
 pub fn ui_installed() -> bool {
     Path::new(super::config::UI_DIR).join("index.html").exists()
 }

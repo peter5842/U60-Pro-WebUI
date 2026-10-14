@@ -177,3 +177,27 @@ export function validatePort(text: string): { ok: true; port: number } | { ok: f
   if ([2222, 8080, 9090, 9097].includes(port)) return { ok: false, error: t('Reserved by the router') }
   return { ok: true, port }
 }
+
+/**
+ * The zashboard link for the panel card: the page's own controller (host and
+ * port of `panel.url`) plus the secret as zashboard's setup parameters, so it
+ * connects without asking. Core upgrades and the TUN switch are hidden there
+ * because the agent owns the binary and the TUN routing.
+ */
+export function panelLink(panel: ProxyStatus['panel']): string | undefined {
+  if (!panel?.url) return undefined
+  let u: URL
+  try {
+    u = new URL(panel.url)
+  } catch {
+    return undefined
+  }
+  const q = new URLSearchParams({
+    hostname: u.hostname,
+    port: u.port || (u.protocol === 'https:' ? '443' : '80'),
+    secret: panel.secret ?? '',
+    disableUpgradeCore: '1',
+    disableTunMode: '1',
+  })
+  return `${u.origin}${u.pathname}?${q.toString()}`
+}

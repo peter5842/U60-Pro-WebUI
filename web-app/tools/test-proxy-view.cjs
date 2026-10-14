@@ -160,3 +160,16 @@ test('relative time', () => {
   assert.equal(view.ago('2026-10-03T12:00:00Z', now), '3 d ago')
   assert.equal(view.ago('garbage', now), undefined)
 })
+
+test('panel link hands zashboard the controller and secret', () => {
+  const link = new URL(view.panelLink({ installed: true, url: 'http://192.168.0.1:9097/ui/', secret: 'a&b' }))
+  assert.equal(link.origin + link.pathname, 'http://192.168.0.1:9097/ui/')
+  assert.equal(link.searchParams.get('hostname'), '192.168.0.1')
+  assert.equal(link.searchParams.get('port'), '9097')
+  assert.equal(link.searchParams.get('secret'), 'a&b')
+  assert.equal(link.searchParams.get('disableUpgradeCore'), '1')
+  assert.equal(link.searchParams.get('disableTunMode'), '1')
+  assert.equal(new URL(view.panelLink({ installed: true, url: 'http://192.168.0.1:9097/ui/' })).searchParams.get('secret'), '')
+  assert.equal(view.panelLink({ installed: false }), undefined)
+  assert.equal(view.panelLink(undefined), undefined)
+})

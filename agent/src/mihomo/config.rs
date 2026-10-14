@@ -8,12 +8,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// mihomo's external controller on the LAN address, for the metacubexd panel
+/// mihomo's external controller on the LAN address, for the zashboard panel
 /// it serves at `/ui`. Its secret is the subscription config's own, else none.
 pub const CONTROLLER_PORT: u16 = 9097;
 /// The controller's unix socket, used by the agent (no secret on the socket).
 pub const CONTROLLER_SOCKET: &str = "/data/mihomo/mihomo.sock";
-/// metacubexd, installed by scripts/deploy-mihomo.sh (`external-ui: ui`).
+/// zashboard, installed by scripts/deploy-mihomo.sh (`external-ui: ui`).
 pub const UI_DIR: &str = "/data/mihomo/ui";
 /// TUN interface name (also used in the runtime firewall rules).
 pub const TUN_DEVICE: &str = "mihomo";
@@ -253,7 +253,7 @@ fn preset_rules(preset: Preset) -> Vec<&'static str> {
 /// Render the full mihomo config for `state`. `lan_ip` is the router's LAN
 /// address; the proxy listener binds only to it. With a subscription profile,
 /// `profile` is that subscription's parsed config.
-/// `ui`: metacubexd is installed and is served at `/ui`.
+/// `ui`: zashboard is installed and is served at `/ui`.
 pub fn render(
     state: &State,
     lan_ip: &str,

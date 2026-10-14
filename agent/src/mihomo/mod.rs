@@ -314,7 +314,7 @@ impl Manager {
 }
 
 impl Inner {
-    /// The secret metacubexd needs: whatever the live config sets ("" = none).
+    /// The secret zashboard needs: whatever the live config sets ("" = none).
     fn live_panel_secret(&mut self) -> String {
         let Ok(modified) = fs::metadata(service::CONFIG).and_then(|m| m.modified()) else {
             return String::new();
