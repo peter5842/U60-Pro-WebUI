@@ -412,10 +412,12 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
     // labelled as UTC (8 h off in China). Time-checked protocols (Shadowsocks
     // 2022, VMess, some REALITY servers) then reject every connection.
     // mihomo's NTP corrects only its own clock; the firmware's clock is never
-    // written (a boot-time guard script keeps it on UTC instead).
+    // written (a boot-time guard script keeps it on UTC instead). mihomo keeps
+    // an offset on top of the system clock, so every step of the system clock
+    // (NITZ, the guard) leaves it wrong until the next sync: poll every minute.
     obj.insert(
         "ntp".into(),
-        json!({"enable": true, "write-to-system": false, "server": "ntp.aliyun.com", "port": 123, "interval": 30}),
+        json!({"enable": true, "write-to-system": false, "server": "ntp.aliyun.com", "port": 123, "interval": 1}),
     );
     let profile = obj.entry("profile").or_insert_with(|| json!({}));
     if let Some(p) = profile.as_object_mut() {
@@ -493,7 +495,12 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
 /// TLS server names (`servername` / `sni`) of the config's inline proxies.
 fn node_server_names(obj: &Map<String, Value>) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
-    for proxy in obj.get("proxies").and_then(Value::as_array).into_iter().flatten() {
+    for proxy in obj
+        .get("proxies")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         for key in ["servername", "sni"] {
             if let Some(name) = proxy.get(key).and_then(Value::as_str) {
                 let name = name.trim();
@@ -632,6 +639,7 @@ mod tests {
         // mihomo keeps its own NTP-corrected clock; the system clock is untouched.
         assert_eq!(c["ntp"]["enable"], true);
         assert_eq!(c["ntp"]["write-to-system"], false);
+        assert_eq!(c["ntp"]["interval"], 1);
     }
 
     #[test]
@@ -673,7 +681,12 @@ mod tests {
         let c = render(&state, "192.168.0.1", Some(&profile), false).unwrap();
         assert_eq!(
             c["sniffer"]["skip-domain"],
-            json!(["+.push.apple.com", "cover.example", "other.example", "trojan.example"])
+            json!([
+                "+.push.apple.com",
+                "cover.example",
+                "other.example",
+                "trojan.example"
+            ])
         );
     }
 

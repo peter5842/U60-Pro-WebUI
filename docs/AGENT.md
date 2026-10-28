@@ -108,11 +108,13 @@ release, GitHub SHA-256 verified on both ends).
   `mihomo -t`, atomically renamed into `config.yaml`, then hot-reloaded via the
   controller. A failed reload restores the previous file and state.
   Subscriptions are fetched `DIRECT` so they never depend on their own nodes.
-- **Clock**: the firmware keeps local time in the system clock labelled as
-  UTC (8 h ahead of real UTC in China), and its time daemons rewrite it, so the
-  agent never touches it. Every rendered config enables mihomo's own NTP with
-  `write-to-system: false`; without it Shadowsocks 2022 (and REALITY servers
-  that enforce a time window) reject every connection right after TCP connects.
+- **Clock**: the firmware's NITZ sync writes local time into the system clock
+  labelled as UTC (8 h ahead of real UTC in China). The agent never touches it;
+  `scripts/device/net-time-guard.sh` steps it back to UTC after boot. Every
+  rendered config enables mihomo's own NTP with `write-to-system: false` and
+  `interval: 1` (minutes). mihomo adds its offset to the system clock, so after
+  each step the offset is stale until the next sync, and Shadowsocks 2022 (and
+  REALITY servers that enforce a time window) reject connections meanwhile.
 - **Upgrades**: on start the agent re-renders the config and, if it differs
   from the installed file, validates and hot-reloads it, so fixes in a new
   agent reach an adopted mihomo without a restart.
