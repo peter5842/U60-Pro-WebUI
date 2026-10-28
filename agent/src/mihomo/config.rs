@@ -408,10 +408,11 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
     }
     // Rule data is installed and updated by scripts/deploy-mihomo.sh.
     obj.insert("geo-auto-update".into(), json!(false));
-    // The firmware keeps local time in the system clock labelled as UTC (8 h
-    // off in China). Time-checked protocols (Shadowsocks 2022, VMess, some
-    // REALITY servers) then reject every connection. mihomo's NTP corrects
-    // only its own clock; the firmware's clock is never written.
+    // The firmware's NITZ sync can put local time into the system clock
+    // labelled as UTC (8 h off in China). Time-checked protocols (Shadowsocks
+    // 2022, VMess, some REALITY servers) then reject every connection.
+    // mihomo's NTP corrects only its own clock; the firmware's clock is never
+    // written (a boot-time guard script keeps it on UTC instead).
     obj.insert(
         "ntp".into(),
         json!({"enable": true, "write-to-system": false, "server": "ntp.aliyun.com", "port": 123, "interval": 30}),
@@ -427,7 +428,9 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
             "tun".into(),
             json!({
                 "enable": true,
-                "stack": "mixed",
+                // Kernel stack for UDP too: gVisor's userspace UDP costs more
+                // than it gives on the SDX75's A55 cores.
+                "stack": "system",
                 "device": TUN_DEVICE,
                 "auto-route": true,
                 "auto-detect-interface": true,
@@ -461,6 +464,11 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
                 }),
             );
         }
+        // A LAN client that runs its own proxy dials REALITY/TLS nodes whose
+        // SNI is a borrowed cover site. Rewriting those connections to the
+        // sniffed host sends them to the real cover site instead of the node,
+        // so the profile's node SNIs are never sniffed.
+        let node_snis = node_server_names(obj);
         if let Some(sniffer) = obj.get_mut("sniffer").and_then(Value::as_object_mut) {
             sniffer.insert("override-destination".into(), json!(true));
             if let Some(protocols) = sniffer.get_mut("sniff").and_then(Value::as_object_mut) {
@@ -468,8 +476,34 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
                     proto.insert("override-destination".into(), json!(true));
                 }
             }
+            if !node_snis.is_empty() {
+                let skip = sniffer.entry("skip-domain").or_insert_with(|| json!([]));
+                if let Some(list) = skip.as_array_mut() {
+                    for sni in node_snis {
+                        if !list.iter().any(|d| d.as_str() == Some(sni.as_str())) {
+                            list.push(json!(sni));
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+/// TLS server names (`servername` / `sni`) of the config's inline proxies.
+fn node_server_names(obj: &Map<String, Value>) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for proxy in obj.get("proxies").and_then(Value::as_array).into_iter().flatten() {
+        for key in ["servername", "sni"] {
+            if let Some(name) = proxy.get(key).and_then(Value::as_str) {
+                let name = name.trim();
+                if !name.is_empty() && !names.iter().any(|n| n == name) {
+                    names.push(name.to_string());
+                }
+            }
+        }
+    }
+    names
 }
 
 #[cfg(test)]
@@ -610,13 +644,37 @@ mod tests {
             ..Default::default()
         };
         let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
-        assert_eq!(c["tun"]["stack"], "mixed");
+        assert_eq!(c["tun"]["stack"], "system");
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
         assert_eq!(c["tun"]["dns-hijack"], json!([]));
         assert_eq!(c["sniffer"]["sniff"]["TLS"]["ports"], json!([443]));
         // No DNS hijack on the router: sniffed domains must override poisoned IPs.
         assert_eq!(c["sniffer"]["override-destination"], true);
         assert_eq!(c["sniffer"]["sniff"]["TLS"]["override-destination"], true);
+    }
+
+    #[test]
+    fn tun_never_sniffs_the_profile_node_snis() {
+        let state = State {
+            settings: Settings {
+                tun: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut profile = airport();
+        profile["sniffer"]["skip-domain"] = json!(["+.push.apple.com", "cover.example"]);
+        profile["proxies"] = json!([
+            {"name": "R1", "type": "vless", "servername": "cover.example"},
+            {"name": "R2", "type": "vless", "servername": "other.example"},
+            {"name": "T1", "type": "trojan", "sni": " trojan.example "},
+            {"name": "SS", "type": "ss"},
+        ]);
+        let c = render(&state, "192.168.0.1", Some(&profile), false).unwrap();
+        assert_eq!(
+            c["sniffer"]["skip-domain"],
+            json!(["+.push.apple.com", "cover.example", "other.example", "trojan.example"])
+        );
     }
 
     #[test]
