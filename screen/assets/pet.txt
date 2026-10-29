@@ -1,0 +1,52 @@
+# Props for 咕嘎 on HOME (docs/SCREEN.md); she herself is the raster
+# in guga.bin. Each block: `= name WIDTHxHEIGHT` then the rows. Colours:
+# `colour` in src/pet/sprite.rs ('.' is transparent).
+
+= heart 7x6
+.RR.RR.
+RRRRRRR
+RRRRRRR
+.RRRRR.
+..RRR..
+...R...
+
+= sparkle 5x5
+..Y..
+..Y..
+YYWYY
+..Y..
+..Y..
+
+= anger 7x7
+.RR.RR.
+R.R.R.R
+RR...RR
+.......
+RR...RR
+R.R.R.R
+.RR.RR.
+
+= sweat 5x5
+..K..
+.KwK.
+KwwwK
+KwWwK
+.KKK.
+
+= note 6x7
+...KKK
+...K.K
+...K..
+...K..
+.KKK..
+KKKK..
+.KK...
+
+= whale 13x7
+..........KK.
+...KKKKK.KHK.
+.KKHHHHHKHK..
+KHHWHHHHHHK..
+KHHHHHHHHK...
+.KHHHHHHK....
+..KKKKKK.....

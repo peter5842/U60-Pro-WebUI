@@ -16,6 +16,9 @@ A custom control plane for the **ZTE U60 Pro (MU5250)** 5G hotspot:
   deploys and updates both.
 - `process-runner/`: a bounded subprocess runner shared by the agent and the
   installer.
+- `screen/`: `zte-screen`, the terminal-style status screen for the device's
+  320×480 touch LCD (`/data/bin/zte-screen`). It parks the stock UI for a
+  session and always restores it; see [docs/SCREEN.md](docs/SCREEN.md).
 
 ## Read before you touch anything
 
@@ -24,7 +27,8 @@ A custom control plane for the **ZTE U60 Pro (MU5250)** 5G hotspot:
    - No boot hooks outside `/etc/rc.local`. No init.d, procd or firewall-include
      changes, and no uci changes to system services.
    - Never disable or kill a daemon listed in `/etc/config/zte_topsw_daemon.conf`.
-     That is the boot sync barrier.
+     That is the boot sync barrier. The only exception is `zte-screen`
+     parking `zte_topsw_devui` after boot (docs/SCREEN.md); don't extend it.
    - Stay out of partitions: no `dd`, `mtd`, `fw_setenv`, `abctl`, or
      QFPROM/fuse writes.
    - Never write the USB composition node (`usb_op`) live.
@@ -107,8 +111,8 @@ Prerequisites: Rust with the `aarch64-unknown-linux-musl` target and
 ```sh
 # Checks. These mirror CI (.github/workflows/checks.yml); run them before calling work done.
 cargo fmt --all --check
-cargo test -p zte-agent -p process-runner --locked
-cargo clippy -p zte-agent -p process-runner --all-targets --locked -- -D warnings
+cargo test -p zte-agent -p zte-screen -p process-runner --locked
+cargo clippy -p zte-agent -p zte-screen -p process-runner --all-targets --locked -- -D warnings
 python3 scripts/check-api-contract.py        # agent routes <-> dashboard calls <-> mock agent
 python3 -m unittest discover -s tests
 (cd web-app && npm ci && npm run build && npm run lint && npm test)
@@ -119,6 +123,7 @@ python3 -m unittest discover -s tests
 # Deploy to the connected device over SSH (transactional, with snapshot + rollback)
 ./deploy.sh              # builds the agent, pushes it, rewrites the startup script, restarts, verifies
 ./deploy-dashboard.sh    # npm ci + build, stages the release, switches /data/www.current, verifies
+./deploy-screen.sh       # builds zte-screen, ends any LCD session, installs /data/bin/zte-screen
 # Both accept --dry-run, --gateway ADDR and --adb-serial SERIAL.
 ```
 
@@ -139,6 +144,7 @@ agent/src/handlers.rs    AppState, /api/dashboard batch, per-source TTL caches
 agent/src/cache.rs       Cached<T> / Observed<T> (TTL + last-good + freshness metadata)
 agent/src/*.rs           one module per domain: cell, wifi, lan, router, sms, usb, charge_policy, …
 process-runner/          bounded subprocess I/O (deadline + output cap)
+screen/                  zte-screen: LCD status screen (DRM atomic, evdev touch, supervisor); --preview DIR renders PNGs
 web-app/src/data/api.ts  endpoint bindings + firmware response mappers (source of truth, client side)
 web-app/src/data/poll.ts shared poller (visibility-aware, non-overlapping, SWR cache)
 web-app/src/features/    home, signal, network, modem, system groups
@@ -198,7 +204,8 @@ paths and a narrow question. Good fits:
 Keep these on the main model and don't delegate them:
 
 - Anything that runs commands on the device, deploys, or touches
-  `scripts/zunlock.py`, `zharden.sh`, rc.local handling, `usb.rs` or
-  `charge_policy.rs`.
+  `scripts/zunlock.py`, `zharden.sh`, rc.local handling, `usb.rs`,
+  `charge_policy.rs`, or the display/takeover code in `screen/`
+  (`drm.rs`, `supervisor.rs`, `panel.rs`).
 - Changes to the auth, AT allowlist, kill-bloat or safety logic.
 - Final review of a change before telling the user it is done.

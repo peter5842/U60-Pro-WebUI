@@ -19,6 +19,7 @@ use crate::netsvc;
 use crate::network_ext;
 use crate::router;
 use crate::schedule;
+use crate::screen;
 use crate::signal_logger;
 use crate::sim;
 use crate::sms;
@@ -336,6 +337,11 @@ pub fn route(
         (&Method::Get, "/api/system/top") => handlers::system_top(state),
         (&Method::Post, "/api/system/kill-bloat") => handlers::system_kill_bloat(state, body),
         (&Method::Post, "/api/system/restart-agent") => device_ext::agent_restart(state),
+        // Geek screen on the LCD
+        (&Method::Get, "/api/screen") => screen::status(state),
+        (&Method::Post, "/api/screen") => screen::open(state),
+        (&Method::Delete, "/api/screen") => screen::close(state),
+        (&Method::Put, "/api/screen/settings") => screen::settings_set(state, body),
         (&Method::Post, "/api/device/reboot") => device_ext::device_reboot(state),
         (&Method::Post, "/api/device/shutdown") => device_ext::device_shutdown(state),
         (&Method::Get, "/api/device/battery-info") => network_ext::network_battery_ubus(state),

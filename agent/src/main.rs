@@ -22,6 +22,7 @@ mod network_ext;
 mod process;
 mod router;
 mod schedule;
+mod screen;
 mod server;
 mod signal_logger;
 mod sim;
@@ -88,6 +89,7 @@ fn main() {
     state.mihomo.start_watchdog();
     sms_forward::start(Arc::clone(&state));
     client_traffic::start();
+    screen::start(Arc::clone(&state));
 
     // Apply persisted TTL settings if they exist
     let _ = std::process::Command::new("sh")

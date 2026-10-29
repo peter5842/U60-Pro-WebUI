@@ -22,6 +22,7 @@ data/bin/dropbear
 data/bin/dbclient
 data/bin/dropbearkey
 data/bin/dashboard-uhttpd
+data/bin/zte-screen
 etc/rc.local
 etc/dropbear
 data/dropbear

@@ -13,6 +13,7 @@ import { mapDataUsage } from './usage'
 import { mapCarrierSelection, mapClientTraffic, mapSmsForward } from './cellular'
 import { mapBlocklist } from './clients'
 import { mapClock, mapDhcpBindings, mapFirewall, mapPortRules, mapWatchdog } from './netsvc'
+import { mapScreen } from './screen'
 import { mapRebootSchedule, mapSleep } from './schedule'
 import { mapDataLimit, mapMobileData } from './wwan'
 import { mapProxyDelays, mapProxyGroups, mapProxyStatus, mapProxySubscriptions } from './proxy'
@@ -29,6 +30,8 @@ import type {
   DhcpBindings,
   FirewallServices,
   PortRules,
+  ScreenSettings,
+  ScreenStatus,
   WatchdogSettings,
   AtSendResult,
   BatteryBspInfo,
@@ -974,6 +977,14 @@ export const api = {
   /** The agent waits for the firmware to apply the filter, so allow a longer timeout. */
   blocklistSet: (mac: string, blocked: boolean): Promise<Blocklist> =>
     req('PUT', '/api/network/blocklist', { mac, blocked }, undefined, 20_000).then(mapBlocklist),
+
+  // Geek screen on the device LCD
+  screen: () => get('/api/screen').then(mapScreen),
+  /** Waits up to ~10 s while the stock UI is parked and the screen starts. */
+  screenOpen: (): Promise<ScreenStatus> => req('POST', '/api/screen', {}, undefined, 20_000).then(mapScreen),
+  /** Waits for the stock UI to come back. */
+  screenClose: (): Promise<ScreenStatus> => req('DELETE', '/api/screen', undefined, undefined, 35_000).then(mapScreen),
+  screenSettingsSet: (body: Partial<ScreenSettings>): Promise<ScreenStatus> => put('/api/screen/settings', body).then(mapScreen),
 
   // Router network services
   watchdog: () => get('/api/router/watchdog').then(mapWatchdog),

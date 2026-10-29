@@ -1,0 +1,11 @@
+[package]
+name = "zte-screen"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Terminal-style status screen for the U60 Pro's 320x480 touch LCD"
+
+[dependencies]
+process-runner = { path = "../process-runner" }
+serde_json = "1"
+libc = "0.2"

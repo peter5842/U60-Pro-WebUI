@@ -321,6 +321,47 @@ export const system: Record<string, string> = {
   'Every day {when}': '每天 {when}',
   'Every {n} days after boot {when}': '开机后每 {n} 天，{when}',
 
+  // Geek screen
+  'Geek screen': '极客屏',
+  'A terminal-style status screen for the device LCD: system, power, cellular, network, clients and the mihomo proxy, with touch. Leaving it, an error or a crash always hands the screen back to the stock UI.':
+    '设备小屏上的终端风格状态屏：系统、电源、蜂窝、网络、终端设备和 mihomo 代理，支持触控。退出、出错或崩溃时，屏幕都会自动交还给原厂界面。',
+  'zte-screen is not installed on the device. Deploy it with ./deploy-screen.sh.': '设备上还没有安装 zte-screen，请用 ./deploy-screen.sh 部署。',
+  'Last attempt was refused: {reason}': '上次启动被拒绝：{reason}',
+  'Show on device': '在设备上显示',
+  'Back to stock UI': '回到原厂界面',
+  'On the LCD': '显示中',
+  'Switching…': '切换中…',
+  'Not started': '未启动',
+  'Failed, stock UI restored': '启动失败，已恢复原厂界面',
+  'Recovering the stock UI': '正在恢复原厂界面',
+  'Stock UI': '原厂界面',
+  'The geek screen status could not be read.': '无法读取极客屏状态。',
+  'The geek screen did not start': '极客屏未能启动',
+  'Could not return to the stock UI': '无法回到原厂界面',
+  'Failed to save the screen settings': '保存屏幕设置失败',
+  'Open automatically': '自动打开',
+  'At boot': '开机时',
+  'Every wake': '每次亮屏',
+  'Whenever the stock UI lights the screen, the geek screen takes over after a moment. Tap :q or hold the power key to use the stock UI; it stays until the screen sleeps again.':
+    '原厂界面每次点亮屏幕时，片刻后会自动切换到极客屏。点 :q 或长按电源键可回到原厂界面，在下次熄屏之前不会再切换。',
+  'Once per boot, a few seconds after the stock UI is up.': '每次开机打开一次，在原厂界面启动几秒后。',
+  'Only from this page or with a two-finger hold.': '只能从本页或用双指长按打开。',
+  'Two-finger hold: hold two fingers still on the lit stock UI for 2 seconds to open the geek screen.':
+    '双指长按：在亮着的原厂界面上用两根手指按住不动 2 秒，即可打开极客屏。',
+  'Two-finger hold': '双指长按',
+  'Two-finger hold listener': '双指长按监听',
+  'Idle time': '空闲时长',
+  'When idle': '空闲后',
+  'Screen off': '熄屏',
+  Brightness: '亮度',
+  'Start page': '起始页',
+  'CRT scanlines': 'CRT 扫描线',
+  Green: '绿色',
+  Amber: '琥珀色',
+  Cyan: '青色',
+  '2 minutes': '2 分钟',
+  '10 minutes': '10 分钟',
+
   // Connection watchdog and clock
   'Connection watchdog': '断网看门狗',
   'The router pings an address regularly and reboots itself when the pings keep failing, which recovers a stuck mobile connection. After 5 frequent reboots the firmware turns it off.':

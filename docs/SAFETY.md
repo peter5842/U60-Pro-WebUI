@@ -70,6 +70,13 @@ and procd will respawn them anyway).
 If a daemon.conf daemon truly must be disabled, comment it out in
 `/etc/config/zte_topsw_daemon.conf` (prefix `#`) — never via init.d.
 
+**One sanctioned exception: the geek screen.** `zte-screen` stops
+`zte_topsw_devui` with `/etc/init.d/zte_topsw_devui stop` *after* boot (boot
+barrier passed, daemons synced), only for the length of a session, and starts
+it again on every exit path; it never disables it and never runs from a boot
+hook. Do not reuse this for any other barrier daemon. The guards and the
+community verification it rests on are in [SCREEN.md](SCREEN.md#safety-model).
+
 ### Overlay whiteouts
 
 `/etc/init.d/<name> disable` creates **whiteout character devices** in

@@ -31,6 +31,7 @@ import {
 } from './usbView'
 import PowerScheduleCard from './PowerScheduleCard'
 import BackupCard from './BackupCard'
+import ScreenCard from './ScreenCard'
 import WatchdogCard, { ClockRow } from './WatchdogCard'
 
 // ── Read failures ─────────────────────────────────────────────────────────────
@@ -426,6 +427,8 @@ export default function SettingsTab({ onLogout }: { onLogout: () => void }) {
       <UsbSection />
 
       <PowerScheduleCard />
+
+      <ScreenCard />
 
       <WatchdogCard />
 

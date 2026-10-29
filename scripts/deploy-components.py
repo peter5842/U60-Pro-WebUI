@@ -296,7 +296,8 @@ def prepare_only(args):
 
 def deploy(args):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}', args.gateway): raise ValueError('Invalid gateway')
-    if not args.agent and not args.dashboard and not args.harden: raise ValueError('Select at least one component')
+    if not args.agent and not args.dashboard and not args.harden and not getattr(args, 'screen', None):
+        raise ValueError('Select at least one component')
     keep_credentials = getattr(args, 'keep_credentials', False)
     # Finish all local preparation before contacting or mutating a device.
     prepared = {}
@@ -314,6 +315,11 @@ def deploy(args):
             script = startup.render(password, pin).encode()
             run(['sh', '-n'], script)
             prepared['startup'] = script
+    if getattr(args, 'screen', None):
+        data = read_limited(args.screen)
+        if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or int.from_bytes(data[18:20], 'little') != 183:
+            raise ValueError('Screen must be an aarch64 ELF64 little-endian executable')
+        prepared['screen'] = data
     if args.dashboard:
         expanded = validate_dashboard(args.dashboard)
         prepared['dashboard'] = read_limited(args.dashboard)
@@ -380,6 +386,11 @@ def deploy(args):
                     break
                 except (RuntimeError, KeyError):
                     if attempt == 4: raise
+        if 'screen' in prepared:
+            # Hand the LCD back before replacing the binary a session runs from.
+            transport.shell('mkdir -p /data/bin; if [ -x /data/bin/zte-screen ]; then /data/bin/zte-screen --stop || true; fi')
+            transport.push(prepared['screen'], '/data/bin/zte-screen', True)
+            transport.shell('/data/bin/zte-screen --version && /data/bin/zte-screen --status >/dev/null')
         if args.dashboard:
             target = f'/data/open-u60-dashboards/{transaction}'
             transport.push(prepared['dashboard'], '/data/local/tmp/dashboard-dist.tar.gz')
@@ -420,6 +431,7 @@ def main():
     parser.add_argument('--bundle', help='Directory containing the pinned Dropbear and uhttpd IPKs')
     parser.add_argument('--auto-adb', action='store_true')
     parser.add_argument('--dashboard')
+    parser.add_argument('--screen', help='zte-screen binary for /data/bin (the LCD status screen)')
     parser.add_argument('--gateway', default=os.environ.get('ZTE_GATEWAY', '192.168.0.1'))
     parser.add_argument('--adb-serial')
     parser.add_argument('--dry-run', action='store_true')

@@ -1576,6 +1576,54 @@ def watchdog():
     return dict(STATE["netsvc"]["watchdog"])
 
 
+SCREEN_CHOICES = {
+    "idle_action": ("stock", "sleep"),
+    "theme": ("green", "amber", "cyan"),
+    "start_page": ("home", "sys", "pwr", "cell", "net", "lan", "proxy"),
+    "auto_open": ("off", "boot", "wake"),
+}
+
+
+def screen():
+    sc = STATE["screen"]
+    return {"installed": True,
+            "session": {"state": sc["state"], "owner": 4242 if sc["state"] == "active" else None,
+                        "reason": sc["reason"], "stock_ui": sc["state"] != "active",
+                        "parked": sc["state"] == "active", "version": "0.1.0"},
+            "settings": dict(sc["settings"]), "gesture_listener": sc["settings"]["gesture"]}
+
+
+def post_screen(body):
+    STATE["screen"].update(state="active", reason=None)
+    return screen()
+
+
+def delete_screen():
+    STATE["screen"]["state"] = "idle"
+    return screen()
+
+
+def put_screen_settings(body):
+    obj = need_object(body, None)
+    merged = dict(STATE["screen"]["settings"])
+    for key, value in obj.items():
+        if key in ("brightness", "idle_secs"):
+            lo, hi = (20, 255) if key == "brightness" else (30, 3600)
+            if not isinstance(value, int) or isinstance(value, bool) or not lo <= value <= hi:
+                raise ApiError(400, f"'{key}' is out of range")
+        elif key in ("scanlines", "gesture"):
+            if not isinstance(value, bool):
+                raise ApiError(400, f"invalid value for '{key}'")
+        elif key in SCREEN_CHOICES:
+            if value not in SCREEN_CHOICES[key]:
+                raise ApiError(400, f"'{key}' is out of range")
+        else:
+            raise ApiError(400, f"unknown setting '{key}'")
+        merged[key] = value
+    STATE["screen"]["settings"] = merged
+    return screen()
+
+
 def put_watchdog(body):
     obj = need_object(body, None)
     w = STATE["netsvc"]["watchdog"]
@@ -2126,6 +2174,9 @@ def initial_state(scenario):
                    "forward_enabled": False, "mapping_enabled": False, "rules": [], "bind_enabled": True,
                    "bindings": [], "next_id": 0x0d92c0},
         "wwan": {"connected": True, "limit": {"enabled": False, "bytes": 322122547200, "alert": 80}},
+        "screen": {"state": "idle", "reason": None,
+                   "settings": {"brightness": 160, "idle_secs": 120, "idle_action": "stock", "theme": "green",
+                                "scanlines": True, "start_page": "home", "gesture": True, "auto_open": "off"}},
     }
 
 
@@ -2152,6 +2203,7 @@ def post_login(body):
 # ── Route tables (scripts/check-api-contract.py parses these; keep the layout) ─
 
 ROUTES_PUT = {
+    "/api/screen/settings": put_screen_settings,
     "/api/sms/forward": put_sms_forward,
     "/api/router/watchdog": put_watchdog,
     "/api/router/firewall": put_firewall_services,
@@ -2182,6 +2234,7 @@ ROUTES_PUT = {
 
 
 ROUTES_GET = {
+    "/api/screen": screen,
     "/api/system/backup": system_backup,
     "/api/cell/operators": carriers,
     "/api/sms/forward": sms_forward,
@@ -2237,6 +2290,7 @@ ROUTES_GET = {
 }
 
 ROUTES_POST = {
+    "/api/screen": post_screen,
     "/api/system/restore": post_system_restore,
     "/api/cell/operators/scan": post_carrier_scan,
     "/api/cell/operators/select": post_carrier_select,
@@ -2394,6 +2448,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         if path == "/api/ttl/clear":
             return self._run("DELETE", path, delete_ttl_clear)
+        if path == "/api/screen":
+            return self._run("DELETE", path, delete_screen)
         return self._run("DELETE", path, None)
 
     def log_message(self, fmt, *args):  # quiet

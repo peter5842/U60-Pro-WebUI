@@ -1,5 +1,5 @@
 [workspace]
-members = ["agent", "installer/src-tauri", "process-runner"]
+members = ["agent", "installer/src-tauri", "process-runner", "screen"]
 resolver = "2"
 
 [profile.release]

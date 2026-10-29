@@ -660,6 +660,32 @@ export interface Blocklist {
   available: boolean
 }
 
+/** `GET /api/screen` — the geek screen on the device LCD (agent/src/screen.rs). */
+export type ScreenAutoOpen = 'off' | 'boot' | 'wake'
+export type ScreenTheme = 'green' | 'amber' | 'cyan'
+export type ScreenPage = 'home' | 'sys' | 'pwr' | 'cell' | 'net' | 'lan' | 'proxy'
+
+export interface ScreenSettings {
+  brightness: number
+  idle_secs: number
+  idle_action: 'stock' | 'sleep'
+  theme: ScreenTheme
+  scanlines: boolean
+  start_page: ScreenPage
+  gesture: boolean
+  auto_open: ScreenAutoOpen
+}
+
+export interface ScreenStatus {
+  installed: boolean
+  /** active: the geek screen owns the LCD; idle: the stock UI does; stale: a session died (the agent repairs it). */
+  state: 'idle' | 'starting' | 'active' | 'restoring' | 'refused' | 'error' | 'stale' | 'unknown'
+  reason?: string
+  version?: string
+  gesture_listener: boolean
+  settings: ScreenSettings
+}
+
 export interface WatchdogSettings {
   enabled: boolean
   host?: string

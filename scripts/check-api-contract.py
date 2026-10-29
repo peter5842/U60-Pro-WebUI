@@ -45,6 +45,7 @@ MOCK_PAYLOAD_POSTS = {
     ("POST", "/api/proxy/service"),
     ("POST", "/api/proxy/subscriptions/update"),
     ("POST", "/api/proxy/delay"),
+    ("POST", "/api/screen"),
 }
 
 AGENT_ROUTE_RE = re.compile(r'\(&Method::(\w+),\s*"(/api/[^"]+)"\)')
