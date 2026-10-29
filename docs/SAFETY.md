@@ -194,9 +194,14 @@ regained and this is deployed again.
   `/ui/`) with the subscription config's secret, or none; the wan zone rejects
   input, so it is LAN-only. The agent uses the unix socket in `/data/mihomo`
   (directory 0700).
-  The mainland bypass adds one tagged mangle PREROUTING MARK rule (`-i br-lan`,
-  ipset `mihomo-cn`, mark `0x10000000`), ip rule 8999 (`fwmark … lookup
-  main`) and the ipset itself; same lifecycle as the accepts.
+  The mainland bypass adds one tagged mangle PREROUTING MARK rule per family
+  (`-i br-lan`, ipsets `mihomo-cn`/`mihomo-cn6`, mark `0x10000000`), ip rule
+  8999 per family (`fwmark … lookup main`) and the ipsets themselves; same
+  lifecycle as the accepts. While the TUN routes IPv6, two tagged ip6tables
+  raw PREROUTING rules (`-i br-lan`/`-i mihomo`, `-d 2000::/3`) leave those
+  packets untracked through the `mihomo_notrack` chain, so IPA cannot offload
+  flows mihomo is carrying (docs/AGENT.md); same lifecycle, and cleared at
+  agent start when no mihomo is running.
 - `usb::enforce_usb_mode_on_boot()` rebuilds the USB configfs gadget **only
   if NCM was explicitly persisted** (`/data/local/tmp/usb_config.json`),
   waits up to 75 s for the stock USB stack to finish (bridge-membership

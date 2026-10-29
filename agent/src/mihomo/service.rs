@@ -262,10 +262,17 @@ fn fw(bin: &str, op: &str, rule: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+/// The accepts, plus the IPv6 NOTRACK exactly while sing-tun routes IPv6.
 pub fn firewall_present() -> bool {
-    ["iptables", "ip6tables"]
+    let accepts = ["iptables", "ip6tables"]
         .iter()
-        .all(|bin| fw_rules().iter().all(|rule| fw(bin, "-C", rule)))
+        .all(|bin| fw_rules().iter().all(|rule| fw(bin, "-C", rule)));
+    accepts
+        && if tun_routes_v6() {
+            notrack_present()
+        } else {
+            !notrack_jumps().iter().any(|rule| raw6("-C", rule))
+        }
 }
 
 pub fn firewall_add() -> Result<(), String> {
@@ -279,11 +286,17 @@ pub fn firewall_add() -> Result<(), String> {
             }
         }
     }
-    Ok(())
+    if tun_routes_v6() {
+        notrack_add()
+    } else {
+        notrack_remove();
+        Ok(())
+    }
 }
 
 pub fn firewall_remove() {
     bypass_remove();
+    notrack_remove();
     for bin in ["iptables", "ip6tables"] {
         for rule in fw_rules() {
             // Remove every copy, bounded in case -D keeps "succeeding".
@@ -293,6 +306,170 @@ pub fn firewall_remove() {
                 }
             }
         }
+    }
+}
+
+// ── IPv6 kept away from IPA offload ──────────────────────────────────────────
+//
+// ipacm offloads established IPv6 flows to IPA by their conntrack tuple
+// (IPv6CTEnabled in /etc/data/ipa/IPACM_cfg.xml). A LAN flow routed into the
+// TUN looks like a forwarded one, so about 250 ms in the client's packets start
+// going straight to the modem, mihomo never sees its ACKs, and the transfer
+// stalls after the first window (measured 2026-10-29: 40 MB stalled at 32 KB;
+// untracked it ran at the Wi-Fi's ~60 Mbit/s). IPv4 is safe: ipacm offloads
+// only masqueraded IPv4 flows. TProxy and REDIRECT were no way out (br_netfilter
+// drops TProxy's socket; REDIRECT needs conntrack and was offloaded too).
+//
+// Packets the TUN carries for global IPv6 destinations are therefore left
+// untracked; the accepts above are stateless, so they still pass. Without the
+// TUN routing IPv6 these rules would leave WAN replies NEW for fw3 to reject,
+// so they exist only while sing-tun's IPv6 rules do. Mainland IPv6 that the
+// bypass sends past the TUN returns early and stays tracked and offloaded.
+
+const NOTRACK_CHAIN: &str = "mihomo_notrack";
+const GLOBAL_V6: &str = "2000::/3";
+
+/// sing-tun routes LAN IPv6 into the TUN: its IPv6 rules use table 2022.
+fn tun_routes_v6() -> bool {
+    Command::new("ip")
+        .args(["-6", "rule", "show"])
+        .bounded_output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout).lines().any(|l| {
+                let words: Vec<&str> = l.split_whitespace().collect();
+                words.windows(2).any(|w| w == ["lookup", ROUTE_TABLE])
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// LAN packets jump to the chain (where the bypass can return early); TUN
+/// output to LAN clients is untracked directly.
+fn notrack_jumps() -> [Vec<&'static str>; 2] {
+    [
+        vec![
+            "PREROUTING",
+            "-i",
+            LAN_BRIDGE,
+            "-d",
+            GLOBAL_V6,
+            "-m",
+            "comment",
+            "--comment",
+            FW_COMMENT,
+            "-j",
+            NOTRACK_CHAIN,
+        ],
+        vec![
+            "PREROUTING",
+            "-i",
+            TUN_DEVICE,
+            "-d",
+            GLOBAL_V6,
+            "-m",
+            "comment",
+            "--comment",
+            FW_COMMENT,
+            "-j",
+            "CT",
+            "--notrack",
+        ],
+    ]
+}
+
+fn notrack_rule() -> Vec<&'static str> {
+    vec![NOTRACK_CHAIN, "-j", "CT", "--notrack"]
+}
+
+fn cn6_return_rule() -> Vec<&'static str> {
+    vec![
+        NOTRACK_CHAIN,
+        "-m",
+        "set",
+        "--match-set",
+        CN6_SET,
+        "dst",
+        "-j",
+        "RETURN",
+    ]
+}
+
+/// `ip6tables -t raw <op> <chain> [1] <rest>`; `-I` inserts at the top.
+fn raw6(op: &str, rule: &[&str]) -> bool {
+    let mut args: Vec<&str> = vec!["-t", "raw", op, rule[0]];
+    if op == "-I" {
+        args.push("1");
+    }
+    args.extend_from_slice(&rule[1..]);
+    Command::new("ip6tables")
+        .args(&args)
+        .bounded_output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn notrack_chain_exists() -> bool {
+    Command::new("ip6tables")
+        .args(["-t", "raw", "-S", NOTRACK_CHAIN])
+        .bounded_output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn notrack_present() -> bool {
+    raw6("-C", &notrack_rule())
+        && cn6_bypassing() == raw6("-C", &cn6_return_rule())
+        && notrack_jumps().iter().all(|rule| raw6("-C", rule))
+}
+
+fn notrack_add() -> Result<(), String> {
+    if !notrack_chain_exists()
+        && !Command::new("ip6tables")
+            .args(["-t", "raw", "-N", NOTRACK_CHAIN])
+            .bounded_output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    {
+        return Err(format!(
+            "ip6tables: could not create the {NOTRACK_CHAIN} chain"
+        ));
+    }
+    // While mainland IPv6 bypasses the TUN its early return must precede the
+    // notrack (rebuilt here after a flush); otherwise it must not be there.
+    if cn6_bypassing() {
+        if !raw6("-C", &cn6_return_rule()) && !raw6("-I", &cn6_return_rule()) {
+            return Err("ip6tables: could not insert the mainland IPv6 return".into());
+        }
+    } else {
+        for _ in 0..8 {
+            if !raw6("-D", &cn6_return_rule()) {
+                break;
+            }
+        }
+    }
+    if !raw6("-C", &notrack_rule()) && !raw6("-A", &notrack_rule()) {
+        return Err("ip6tables: could not add the IPv6 notrack rule".into());
+    }
+    for rule in notrack_jumps() {
+        if !raw6("-C", &rule) && !raw6("-I", &rule) {
+            return Err("ip6tables: could not insert the IPv6 notrack jump".into());
+        }
+    }
+    Ok(())
+}
+
+fn notrack_remove() {
+    for rule in notrack_jumps() {
+        for _ in 0..8 {
+            if !raw6("-D", &rule) {
+                break;
+            }
+        }
+    }
+    for op in ["-F", "-X"] {
+        let _ = Command::new("ip6tables")
+            .args(["-t", "raw", op, NOTRACK_CHAIN])
+            .bounded_output();
     }
 }
 
@@ -339,15 +516,50 @@ pub fn cleanup_routing() {
 // ── Mainland bypass for the TUN ──────────────────────────────────────────────
 //
 // TUN costs about one CPU core per 100 Mbit/s here (measured 2026-10-06), and
-// mainland destinations go DIRECT anyway. LAN packets to mainland IPv4 ranges
-// (an ipset loaded from CN_LIST) get a mark, and one ip rule ahead of
-// sing-tun's (8999 < 9000) sends marked packets through the main table, so
-// they keep the stock path and IPA offload. Runtime only, like the accepts.
+// mainland destinations go DIRECT anyway. LAN packets to mainland ranges
+// (ipsets loaded from CN_LIST, one per family) get a mark, and one ip rule per
+// family ahead of sing-tun's (8999 < 9000) sends marked packets through the
+// main table, so they keep the stock path and IPA offload. Mainland IPv6 also
+// returns before the IPv6 notrack, so it stays tracked for that offload.
+// Runtime only, like the accepts.
 
 pub const CN_LIST: &str = "/data/mihomo/cn.list";
 const CN_SET: &str = "mihomo-cn";
+const CN6_SET: &str = "mihomo-cn6";
 const BYPASS_MARK: &str = "0x10000000/0x10000000";
 const BYPASS_PREF: &str = "8999";
+/// A list with fewer prefixes of a family is taken as truncated.
+const MIN_PREFIXES: usize = 1000;
+
+/// One address family of the bypass.
+struct Family {
+    name: &'static str,
+    iptables: &'static str,
+    ip: &'static str,
+    set: &'static str,
+    inet: &'static str,
+    prefixes: fn(&str) -> Vec<&str>,
+}
+
+const FAMILIES: [Family; 2] = [
+    Family {
+        name: "IPv4",
+        iptables: "iptables",
+        ip: "-4",
+        set: CN_SET,
+        inet: "inet",
+        prefixes: cn_prefixes,
+    },
+    Family {
+        name: "IPv6",
+        iptables: "ip6tables",
+        ip: "-6",
+        set: CN6_SET,
+        inet: "inet6",
+        prefixes: cn6_prefixes,
+    },
+];
+const V6: &Family = &FAMILIES[1];
 
 pub fn bypass_available() -> bool {
     Path::new(CN_LIST).exists()
@@ -355,19 +567,27 @@ pub fn bypass_available() -> bool {
 
 /// IPv4 prefixes from the list (one CIDR per line; IPv6 and junk skipped).
 pub fn cn_prefixes(text: &str) -> Vec<&str> {
+    prefixes_of::<std::net::Ipv4Addr>(text, 32)
+}
+
+/// IPv6 prefixes from the list (IPv4 and junk skipped).
+pub fn cn6_prefixes(text: &str) -> Vec<&str> {
+    prefixes_of::<std::net::Ipv6Addr>(text, 128)
+}
+
+fn prefixes_of<A: std::str::FromStr>(text: &str, max_len: u8) -> Vec<&str> {
     text.lines()
         .map(str::trim)
         .filter(|l| {
             let Some((addr, len)) = l.split_once('/') else {
                 return false;
             };
-            addr.parse::<std::net::Ipv4Addr>().is_ok()
-                && len.parse::<u8>().is_ok_and(|n| (1..=32).contains(&n))
+            addr.parse::<A>().is_ok() && len.parse::<u8>().is_ok_and(|n| (1..=max_len).contains(&n))
         })
         .collect()
 }
 
-fn bypass_mark_rule(op: &str) -> bool {
+fn bypass_mark_rule(f: &Family, op: &str) -> bool {
     let mut args = vec!["-t", "mangle", op, "PREROUTING"];
     if op == "-I" {
         args.push("1");
@@ -378,7 +598,7 @@ fn bypass_mark_rule(op: &str) -> bool {
         "-m",
         "set",
         "--match-set",
-        CN_SET,
+        f.set,
         "dst",
         "-m",
         "comment",
@@ -389,16 +609,16 @@ fn bypass_mark_rule(op: &str) -> bool {
         "--set-xmark",
         BYPASS_MARK,
     ]);
-    Command::new("iptables")
+    Command::new(f.iptables)
         .args(&args)
         .bounded_output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
-fn bypass_rule_present() -> bool {
+fn bypass_rule_present(f: &Family) -> bool {
     Command::new("ip")
-        .args(["-4", "rule", "show"])
+        .args([f.ip, "rule", "show"])
         .bounded_output()
         .map(|o| {
             String::from_utf8_lossy(&o.stdout)
@@ -408,99 +628,140 @@ fn bypass_rule_present() -> bool {
         .unwrap_or(false)
 }
 
-fn set_present() -> bool {
+fn set_present(set: &str) -> bool {
     Command::new("ipset")
-        .args(["list", "-n", CN_SET])
+        .args(["list", "-n", set])
         .bounded_output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
-pub fn bypass_present() -> bool {
-    set_present() && bypass_mark_rule("-C") && bypass_rule_present()
+/// Mainland IPv6 is being sent past the TUN, so it must skip the notrack.
+fn cn6_bypassing() -> bool {
+    bypass_mark_rule(V6, "-C")
 }
 
-/// Load the set (only when missing: a reload costs ~6000 entries) and insert
-/// the mark rule and the ip rule. Returns the number of prefixes loaded.
+pub fn bypass_present() -> bool {
+    FAMILIES
+        .iter()
+        .all(|f| set_present(f.set) && bypass_mark_rule(f, "-C") && bypass_rule_present(f))
+        && (!notrack_chain_exists() || raw6("-C", &cn6_return_rule()))
+}
+
+fn load_set(f: &Family, prefixes: &[&str]) -> Result<usize, String> {
+    if prefixes.len() < MIN_PREFIXES {
+        return Err(format!(
+            "{CN_LIST} holds only {} {} prefixes; refusing a partial list",
+            prefixes.len(),
+            f.name
+        ));
+    }
+    let set = f.set;
+    let mut script = format!(
+        "create {set} hash:net family {} maxelem {} -exist\nflush {set}\n",
+        f.inet,
+        (prefixes.len() * 2).max(16384)
+    );
+    for p in prefixes {
+        script.push_str(&format!("add {set} {p} -exist\n"));
+    }
+    let out = process_runner::output(
+        Command::new("ipset").arg("restore"),
+        Some(script.as_bytes()),
+        Duration::from_secs(20),
+        64 * 1024,
+    )
+    .map_err(|e| format!("ipset restore: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "ipset restore: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(prefixes.len())
+}
+
+/// Load the sets (only when missing: a reload costs ~10000 entries), then the
+/// IPv6 notrack return, then the mark rules and ip rules, so mainland IPv6 is
+/// never sent past the TUN untracked. Returns the number of prefixes loaded.
 pub fn bypass_add() -> Result<usize, String> {
     let mut loaded = 0;
-    if !set_present() {
+    let missing: Vec<&Family> = FAMILIES.iter().filter(|f| !set_present(f.set)).collect();
+    if !missing.is_empty() {
         let text = fs::read_to_string(CN_LIST).map_err(|e| format!("{CN_LIST}: {e}"))?;
-        let prefixes = cn_prefixes(&text);
-        if prefixes.len() < 1000 {
+        for f in missing {
+            loaded += load_set(f, &(f.prefixes)(&text))?;
+        }
+    }
+    if notrack_chain_exists() && !raw6("-C", &cn6_return_rule()) && !raw6("-I", &cn6_return_rule())
+    {
+        return Err("ip6tables: could not insert the mainland IPv6 return".into());
+    }
+    for f in &FAMILIES {
+        if !bypass_mark_rule(f, "-C") && !bypass_mark_rule(f, "-I") {
             return Err(format!(
-                "{CN_LIST} holds only {} IPv4 prefixes; refusing a partial list",
-                prefixes.len()
+                "{}: could not insert the mainland mark rule",
+                f.iptables
             ));
         }
-        let mut script = format!(
-            "create {CN_SET} hash:net family inet maxelem {} -exist\nflush {CN_SET}\n",
-            (prefixes.len() * 2).max(16384)
-        );
-        for p in &prefixes {
-            script.push_str(&format!("add {CN_SET} {p} -exist\n"));
-        }
-        let out = process_runner::output(
-            Command::new("ipset").arg("restore"),
-            Some(script.as_bytes()),
-            Duration::from_secs(20),
-            64 * 1024,
-        )
-        .map_err(|e| format!("ipset restore: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "ipset restore: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        loaded = prefixes.len();
-    }
-    if !bypass_mark_rule("-C") && !bypass_mark_rule("-I") {
-        return Err("iptables: could not insert the mainland mark rule".into());
-    }
-    if !bypass_rule_present() {
-        let ok = Command::new("ip")
-            .args([
-                "-4",
-                "rule",
-                "add",
-                "pref",
-                BYPASS_PREF,
-                "fwmark",
-                BYPASS_MARK,
-                "lookup",
-                "main",
-            ])
-            .bounded_output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !ok {
-            return Err("ip rule: could not add the mainland bypass rule".into());
+        if !bypass_rule_present(f) {
+            let ok = Command::new("ip")
+                .args([
+                    f.ip,
+                    "rule",
+                    "add",
+                    "pref",
+                    BYPASS_PREF,
+                    "fwmark",
+                    BYPASS_MARK,
+                    "lookup",
+                    "main",
+                ])
+                .bounded_output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !ok {
+                return Err(format!(
+                    "ip rule: could not add the {} mainland bypass rule",
+                    f.name
+                ));
+            }
         }
     }
     Ok(loaded)
 }
 
+/// Marks and ip rules go first, so mainland IPv6 is back in the TUN before
+/// its notrack return is removed.
 pub fn bypass_remove() {
-    for _ in 0..8 {
-        if !bypass_mark_rule("-D") {
-            break;
+    for f in &FAMILIES {
+        for _ in 0..8 {
+            if !bypass_mark_rule(f, "-D") {
+                break;
+            }
+        }
+        for _ in 0..8 {
+            let ok = Command::new("ip")
+                .args([f.ip, "rule", "del", "pref", BYPASS_PREF])
+                .bounded_output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !ok {
+                break;
+            }
         }
     }
     for _ in 0..8 {
-        let ok = Command::new("ip")
-            .args(["-4", "rule", "del", "pref", BYPASS_PREF])
-            .bounded_output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !ok {
+        if !raw6("-D", &cn6_return_rule()) {
             break;
         }
     }
     // Only possible once no rule references the set.
-    let _ = Command::new("ipset")
-        .args(["destroy", CN_SET])
-        .bounded_output();
+    for f in &FAMILIES {
+        let _ = Command::new("ipset")
+            .args(["destroy", f.set])
+            .bounded_output();
+    }
 }
 
 /// Does mihomo's LAN controller at `addr` accept `secret`? `None` when it
@@ -622,6 +883,25 @@ mod tests {
         let text =
             "1.0.1.0/24\n 1.0.2.0/23 \n2400:3200::/32\n# comment\n10.0.0.0/33\nbad\n0.0.0.0/0\n";
         assert_eq!(cn_prefixes(text), ["1.0.1.0/24", "1.0.2.0/23"]);
+    }
+
+    #[test]
+    fn cn_list_ipv6_prefixes_skip_ipv4_and_junk() {
+        let text = "1.0.1.0/24\n2400:3200::/32\n 2001:250::/30 \n::/0\n2001:db8::/129\nfe80::1\n";
+        assert_eq!(cn6_prefixes(text), ["2400:3200::/32", "2001:250::/30"]);
+    }
+
+    #[test]
+    fn ipv6_notrack_covers_lan_ingress_and_tun_output_only() {
+        let [lan, tun] = notrack_jumps();
+        assert_eq!(&lan[..5], ["PREROUTING", "-i", "br-lan", "-d", "2000::/3"]);
+        assert_eq!(lan[lan.len() - 2..], ["-j", NOTRACK_CHAIN]);
+        assert_eq!(&tun[..5], ["PREROUTING", "-i", "mihomo", "-d", "2000::/3"]);
+        assert_eq!(tun[tun.len() - 3..], ["-j", "CT", "--notrack"]);
+        // The mainland return is matched inside the chain, ahead of the notrack.
+        assert_eq!(cn6_return_rule()[0], NOTRACK_CHAIN);
+        assert!(cn6_return_rule().contains(&CN6_SET));
+        assert_eq!(notrack_rule(), [NOTRACK_CHAIN, "-j", "CT", "--notrack"]);
     }
 
     #[test]

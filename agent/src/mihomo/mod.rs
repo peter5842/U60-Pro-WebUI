@@ -210,6 +210,10 @@ impl Manager {
         let process = service::adopt();
         if let Some(p) = &process {
             eprintln!("[mihomo] adopted running mihomo (pid {})", p.pid);
+        } else {
+            // Rules left by a mihomo that died with the previous agent; the
+            // IPv6 notrack in particular breaks LAN IPv6 without the TUN.
+            service::firewall_remove();
         }
         Self {
             inner: Mutex::new(Inner {
@@ -588,7 +592,7 @@ impl Inner {
         {
             self.firewall_checked = Some(Instant::now());
             if !service::firewall_present() {
-                eprintln!("[mihomo] TUN firewall accepts were missing (fw3 reload?) — restoring");
+                eprintln!("[mihomo] TUN firewall rules were missing (fw3 reload?) — restoring");
                 if let Err(e) = service::firewall_add() {
                     self.last_error = Some(e);
                 }
@@ -685,6 +689,13 @@ impl Inner {
         self.process = Some(process);
         self.traffic = None;
         self.last_error = None;
+        if self.state.settings.tun {
+            // sing-tun's IPv6 rules exist now, so the IPv6 notrack can go in.
+            if let Err(e) = service::firewall_add() {
+                self.last_error = Some(e);
+            }
+            self.firewall_checked = None;
+        }
         self.sync_bypass();
         if self.version.is_none() {
             self.version = service::version();

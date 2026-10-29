@@ -4,7 +4,8 @@
 # 1. LAN IPv6: the carrier gives a single /64 with no prefix delegation, so
 #    odhcpd must relay RA/DHCPv6/NDP from zte_wan6 to the LAN. zte_router
 #    rewrites dhcp.lan back to ra/dhcpv6=server on every boot, which leaves
-#    clients without a global IPv6.
+#    clients without a global IPv6. With IPA and the mihomo TUN also on, the
+#    agent keeps TUN'd IPv6 untracked so IPA offload cannot stall it.
 # 2. Clock: ZTE's NITZ time sync writes Beijing wall time into the kernel
 #    clock while the OS timezone is UTC, so the epoch runs 8h fast. The OS
 #    timezone is CST-8 now; this keeps the kernel clock on true UTC using the
@@ -23,6 +24,8 @@ TIME_URLS="http://www.baidu.com http://www.qq.com http://www.aliyun.com"
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; [ -s "$LOG" ] && [ "$(wc -c < "$LOG")" -gt $MAX_LOG ] && tail -c $((MAX_LOG / 2)) "$LOG" > "$LOG.new" 2>/dev/null && mv "$LOG.new" "$LOG"; }
 
 fix_v6_relay() {
+    # Do not commit another caller's staged DHCP changes.
+    [ -z "$(uci -q changes dhcp)" ] || return 0
     changed=0
     want() { [ "$(uci -q get "$1")" = "$2" ] || { uci set "$1=$2"; changed=1; }; }
     want dhcp.wan_v6.interface zte_wan6

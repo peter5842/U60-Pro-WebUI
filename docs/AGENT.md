@@ -153,13 +153,34 @@ release, GitHub SHA-256 verified on both ends).
   re-applies the rules at boot; turning TUN off restores the stock route.
 - **Mainland bypass** (`settings.cn_bypass`, default on): TUN costs about one
   A55 core per 100 Mbit/s (measured 2026-10-06: ~90 Mbit/s domestic at 80–90%
-  of a core). With the bypass, LAN packets to mainland IPv4 ranges (ipset
-  `mihomo-cn`, loaded from `/data/mihomo/cn.list`, which `deploy-mihomo.sh`
-  installs from a pinned MetaCubeX commit) get mark `0x10000000` in mangle
-  PREROUTING, and ip rule 8999 sends them through the main table ahead of
-  sing-tun's rules, so they keep the stock path and IPA offload (measured
-  138–195 Mbit/s at ~0% mihomo CPU). Runtime only, re-asserted with the
-  accepts, removed with them.
+  of a core). With the bypass, LAN packets to mainland IPv4 and IPv6 ranges
+  (ipsets `mihomo-cn` and `mihomo-cn6`, loaded from `/data/mihomo/cn.list`,
+  which `deploy-mihomo.sh` installs from a pinned MetaCubeX commit; a family
+  with under 1000 prefixes is refused as truncated) get mark `0x10000000` in
+  mangle PREROUTING, and ip rule 8999 (one per family) sends them through the
+  main table ahead of sing-tun's rules, so they keep the stock path and IPA
+  offload (measured 138–195 Mbit/s at ~0% mihomo CPU). Mainland IPv6 also
+  returns early from the IPv6 notrack chain (below), so it stays tracked.
+  Runtime only, re-asserted with the accepts, removed with them.
+- **IPv6 and IPA offload**: ipacm offloads established IPv6 flows by their
+  conntrack tuple (`IPv6CTEnabled` in `/etc/data/ipa/IPACM_cfg.xml`). A LAN
+  flow routed into the TUN looks forwarded, so about 250 ms in the client's
+  packets go straight to the modem and the transfer stalls after its first
+  window (2026-10-29: 40 MB over IPv6 stalled at 32 KB with IPA, TUN and the
+  LAN IPv6 relay all on). IPv4 is unaffected because ipacm offloads only
+  masqueraded IPv4 flows. While sing-tun routes IPv6 (its `ip -6` rules point
+  at table 2022) the agent leaves those packets untracked: ip6tables raw
+  PREROUTING `-i br-lan -d 2000::/3 -j mihomo_notrack` (the chain ends in
+  `CT --notrack`, after the mainland return) and `-i mihomo -d 2000::/3 -j CT
+  --notrack`. The TUN accepts are stateless, so untracked packets still pass;
+  untracked LAN-to-LAN IPv6 is accepted by fw3 as before. The rules exist only
+  with the TUN's IPv6 routes (without them WAN replies would arrive NEW and be
+  rejected), are re-asserted with the accepts and removed with them, and an
+  agent that starts without a running mihomo clears any left behind.
+  Alternatives tested and rejected: TProxy (with `bridge-nf-call-ip6tables=1`
+  the IPv6 stack drops the socket TPROXY assigned, so connections land on
+  uhttpd's `:443` or nowhere) and REDIRECT (works for IPv4, but its NAT'd IPv6
+  flows were offloaded the same way, and NAT cannot be untracked).
 - **Forwarding watchdog**: every 60 s a mainland 204 endpoint is fetched
   through the mixed port (and directly when that fails, to rule out a WAN
   outage). Three failures through mihomo restart it; if it still does not
