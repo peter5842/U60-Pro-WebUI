@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
@@ -76,7 +75,7 @@ impl AuthState {
 
     pub fn login_pin(&self, pin: &str, client_ip: &str) -> LoginResult {
         if validate_pin(pin).is_err() {
-            self.record_failed_login(client_ip, epoch_secs());
+            self.record_failed_login(client_ip, boot_secs());
             return LoginResult::Invalid;
         }
         self.login_against(pin, &self.pin_hash, client_ip)
@@ -88,7 +87,7 @@ impl AuthState {
         stored_hash: &Mutex<Option<String>>,
         client_ip: &str,
     ) -> LoginResult {
-        let now = epoch_secs();
+        let now = boot_secs();
 
         {
             let mut attempts = self.failed_logins.safe_lock();
@@ -175,7 +174,7 @@ impl AuthState {
     /// Validate a bearer token, sliding its expiry forward on success. Without
     /// the slide a dashboard left open is logged out mid-poll on the hour.
     pub fn validate(&self, token: &str) -> bool {
-        let now = epoch_secs();
+        let now = boot_secs();
         let mut tokens = self.tokens.safe_lock();
         tokens.retain(|t| t.expires > now);
         match tokens.iter_mut().find(|t| t.value == token) {
@@ -268,11 +267,24 @@ fn hex_nibble(b: u8) -> Result<u8, ()> {
     }
 }
 
-fn epoch_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+/// Seconds since boot, for token expiry and login lockouts. The wall clock is
+/// unusable here: NITZ steps it by the local UTC offset (+8 h on this unit) and
+/// the time guard steps it back, which would log every session out or hold a
+/// lockout for hours. `CLOCK_BOOTTIME` also keeps counting through suspend.
+fn boot_secs() -> u64 {
+    #[cfg(target_os = "linux")]
+    const CLOCK: libc::clockid_t = libc::CLOCK_BOOTTIME;
+    // Host tests on macOS: no CLOCK_BOOTTIME there.
+    #[cfg(not(target_os = "linux"))]
+    const CLOCK: libc::clockid_t = libc::CLOCK_MONOTONIC;
+    // SAFETY: an all-zero timespec is a valid value of this plain C struct.
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    // SAFETY: ts is writable timespec storage and CLOCK exists on this target.
+    if unsafe { libc::clock_gettime(CLOCK, &mut ts) } != 0 {
+        // Cannot fail for a supported clock id; never panic on a request path.
+        return 0;
+    }
+    ts.tv_sec as u64
 }
 
 #[cfg(test)]
@@ -350,13 +362,13 @@ mod tests {
         // Age the token to one second short of expiry.
         {
             let mut tokens = auth.tokens.safe_lock();
-            tokens[0].expires = epoch_secs() + 1;
+            tokens[0].expires = boot_secs() + 1;
         }
 
         assert!(auth.validate(&token));
         let expires = auth.tokens.safe_lock()[0].expires;
         assert!(
-            expires >= epoch_secs() + TOKEN_TTL_SECS - 2,
+            expires >= boot_secs() + TOKEN_TTL_SECS - 2,
             "validate() should push expiry back out to the full TTL"
         );
     }
@@ -367,7 +379,7 @@ mod tests {
         let token = token_of(auth.login_password("correct-horse", IP));
         assert!(!auth.validate("not-a-real-token"));
 
-        auth.tokens.safe_lock()[0].expires = epoch_secs() - 1;
+        auth.tokens.safe_lock()[0].expires = boot_secs() - 1;
         assert!(!auth.validate(&token));
     }
 }
