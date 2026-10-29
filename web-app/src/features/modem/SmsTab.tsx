@@ -44,6 +44,7 @@ export default function SmsTab() {
   // Always the latest collection, including a value published but not yet rendered.
   const latest = useRef<SmsList | null>(null)
   const rendered = useRef<SmsList | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
   if (rendered.current !== list.data) {
     // Only a genuinely new published value replaces the ref; a render that still carries the
     // previous value must not undo a change committed but not yet rendered.
@@ -100,6 +101,10 @@ export default function SmsTab() {
   function openMsg(m: SmsMessage) {
     setSelectedId(m.id)
     if (m.tag === 1) void markMessageRead(m.id)
+    // Below lg the message renders under the list; bring it into view instead of leaving it off screen.
+    if (!window.matchMedia('(min-width: 1024px)').matches) {
+      requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: 'start' }))
+    }
   }
 
   async function send(e: React.FormEvent) {
@@ -275,42 +280,45 @@ export default function SmsTab() {
           )}
         </Card>
 
-        <Card className="lg:col-span-2" title={selected ? t('Message') : t('Select a message')}>
-          {selected ? (
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-body font-semibold text-ink">
-                    {box === 'inbox'
-                      ? t('From: {number}', { number: selected.number || '\u2014' })
-                      : t('To: {number}', { number: selected.number || '\u2014' })}
-                  </p>
-                  <p className="tnum font-mono mt-0.5 text-caption text-ink3">{formatDate(selected.date)}</p>
+        {/* Phones have no room for an empty reading pane; it appears once a message is picked. */}
+        <div ref={detailRef} className={`scroll-mt-3 lg:col-span-2 ${selected ? '' : 'hidden lg:block'}`}>
+          <Card className="h-full" title={selected ? t('Message') : t('Select a message')}>
+            {selected ? (
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-body font-semibold text-ink">
+                      {box === 'inbox'
+                        ? t('From: {number}', { number: selected.number || '\u2014' })
+                        : t('To: {number}', { number: selected.number || '\u2014' })}
+                    </p>
+                    <p className="tnum font-mono mt-0.5 text-caption text-ink3">{formatDate(selected.date)}</p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => deleteMsg(selected.id)}>
+                    {t('Delete')}
+                  </Button>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => deleteMsg(selected.id)}>
-                  {t('Delete')}
-                </Button>
+                <div className="rounded-ctl bg-surface2/70 p-3.5">
+                  <p className="whitespace-pre-wrap break-words text-body leading-relaxed text-ink">{selected.content}</p>
+                </div>
+                {box === 'inbox' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setComposing(true)
+                      setTo(selected.number)
+                      setSelectedId(null)
+                    }}
+                  >
+                    {t('Reply')}
+                  </Button>
+                )}
               </div>
-              <div className="rounded-ctl bg-surface2/70 p-3.5">
-                <p className="whitespace-pre-wrap break-words text-body leading-relaxed text-ink">{selected.content}</p>
-              </div>
-              {box === 'inbox' && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setComposing(true)
-                    setTo(selected.number)
-                    setSelectedId(null)
-                  }}
-                >
-                  {t('Reply')}
-                </Button>
-              )}
-            </div>
-          ) : (
-            <Empty icon={<IMessage size={26} />} title={t('No message selected')} />
-          )}
-        </Card>
+            ) : (
+              <Empty icon={<IMessage size={26} />} title={t('No message selected')} />
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   )

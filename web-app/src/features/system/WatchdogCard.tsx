@@ -94,5 +94,5 @@ export function ClockRow() {
   if (!c?.local_time) return null
   const source = c.source === 'NITZ' ? t('from the mobile network') : c.source === 'SNTP' ? t('from NTP servers') : c.source === 'MANUAL' ? t('set by hand') : c.source
   const offset = c.utc_offset_hours != null ? ` (UTC${c.utc_offset_hours >= 0 ? '+' : ''}${c.utc_offset_hours})` : ''
-  return <Row label={t('Router clock')} value={`${c.local_time}${offset}${source ? ` · ${source}` : ''}`} mono />
+  return <Row label={t('Router clock')} value={`${c.local_time}${offset}${source ? ` · ${source}` : ''}`} mono wrap />
 }

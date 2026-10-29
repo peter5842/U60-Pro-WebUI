@@ -182,9 +182,14 @@ function GroupCard({
           className="flex min-w-0 flex-1 items-center gap-2 text-left coarse:min-h-11"
         >
           <IChevronDown size={15} className={`shrink-0 text-ink3 transition-transform ${expanded ? '' : '-rotate-90'}`} />
-          <span className="font-display text-sm font-semibold text-ink">{group.name}</span>
-          <Chip>{groupTypeLabel(group.type)}</Chip>
-          <span className="min-w-0 truncate text-meta text-ink2">{nowLabel}</span>
+          {/* Phones: name and type on one line, the selected route below it, so neither is squeezed. */}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-display text-sm font-semibold text-ink">{group.name}</span>
+              <Chip>{groupTypeLabel(group.type)}</Chip>
+            </span>
+            <span className="min-w-0 truncate text-meta text-ink2">{nowLabel}</span>
+          </span>
         </button>
         <Button size="sm" variant="ghost" onClick={() => void test()} loading={busy === '__test'} disabled={!!busy}>
           {t('Test')}

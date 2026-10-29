@@ -149,7 +149,7 @@ function LoggerCard({
       </div>
 
       {status && (
-        <div className="mt-3 grid grid-cols-3 gap-3 border-t border-line/8 pt-3">
+        <div className="mt-3 grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-6 gap-y-3 border-t border-line/8 pt-3">
           <div>
             <p className="label">{t('Status')}</p>
             <p className={`mt-0.5 text-body font-bold ${isRunning ? 'text-ok' : 'text-ink3'}`}>
