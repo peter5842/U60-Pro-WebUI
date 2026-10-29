@@ -38,7 +38,11 @@ const TICK: Duration = Duration::from_secs(5);
 const FIREWALL_CHECK_EVERY: Duration = Duration::from_secs(15);
 const CRASH_WINDOW: Duration = Duration::from_secs(600);
 const TUN_CRASH_LIMIT: usize = 3;
+const BACKOFF_MIN: Duration = Duration::from_secs(5);
 const BACKOFF_MAX: Duration = Duration::from_secs(300);
+/// A process that exits sooner than this after starting counts as a failed
+/// start, so it is retried with backoff instead of on the next tick.
+const STABLE_RUN: Duration = Duration::from_secs(60);
 /// Minimum gap between automatic profile downloads after a failure.
 const PROFILE_RETRY: Duration = Duration::from_secs(1800);
 /// Forwarding health check: interval and consecutive failures before acting.
@@ -214,7 +218,7 @@ impl Manager {
                 version: None,
                 restarts: 0,
                 crashes: VecDeque::new(),
-                backoff: Duration::from_secs(5),
+                backoff: BACKOFF_MIN,
                 retry_at: None,
                 last_error: None,
                 notice: None,
@@ -520,8 +524,14 @@ impl Inner {
     fn tick(&mut self) {
         // Reap an exited process and remember why it died.
         if self.process.is_some() && !self.alive() {
-            self.process = None;
+            let ran = self.process.take().map(|p| p.started.elapsed());
             self.crashes.push_back(Instant::now());
+            if ran.is_some_and(|d| d < STABLE_RUN) {
+                self.retry_at = Some(Instant::now() + self.backoff);
+                self.backoff = (self.backoff * 2).min(BACKOFF_MAX);
+            } else {
+                self.backoff = BACKOFF_MIN;
+            }
             self.last_error =
                 service::log_tail_error().or(Some("mihomo exited unexpectedly".into()));
             eprintln!(
@@ -557,8 +567,8 @@ impl Inner {
             }
             match self.start() {
                 Ok(()) => {
+                    // Keep the backoff: it resets only once a process has run for STABLE_RUN.
                     self.restarts += 1;
-                    self.backoff = Duration::from_secs(5);
                     self.retry_at = None;
                 }
                 Err(e) => {
@@ -1077,6 +1087,7 @@ impl Manager {
                 let mut next = inner.state.clone();
                 next.settings.enabled = true;
                 inner.retry_at = None;
+                inner.backoff = BACKOFF_MIN;
                 inner.apply(next)
             }
             Some("stop") => {
@@ -1633,7 +1644,7 @@ mod tests {
                     version: None,
                     restarts: 0,
                     crashes: VecDeque::new(),
-                    backoff: Duration::from_secs(5),
+                    backoff: BACKOFF_MIN,
                     retry_at: None,
                     last_error: None,
                     notice: None,
