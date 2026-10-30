@@ -180,7 +180,11 @@ release, GitHub SHA-256 verified on both ends).
   Alternatives tested and rejected: TProxy (with `bridge-nf-call-ip6tables=1`
   the IPv6 stack drops the socket TPROXY assigned, so connections land on
   uhttpd's `:443` or nowhere) and REDIRECT (works for IPv4, but its NAT'd IPv6
-  flows were offloaded the same way, and NAT cannot be untracked).
+  flows were offloaded the same way, and NAT cannot be untracked). The relay
+  itself is not the agent's: `scripts/device/net-time-guard.sh` keeps odhcpd
+  relaying RA/DHCPv6, routes the WAN /64 on-link to `br-lan`, and keeps NDP
+  relay off on the raw-IP WAN, where odhcpd used to route LAN clients out
+  the WAN.
 - **Forwarding watchdog**: every 60 s a mainland 204 endpoint is fetched
   through the mixed port (and directly when that fails, to rule out a WAN
   outage). Three failures through mihomo restart it; if it still does not

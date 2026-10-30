@@ -2,10 +2,18 @@
 # net_time_guard.sh — keep two firmware-reverted settings in place.
 #
 # 1. LAN IPv6: the carrier gives a single /64 with no prefix delegation, so
-#    odhcpd must relay RA/DHCPv6/NDP from zte_wan6 to the LAN. zte_router
+#    odhcpd must relay RA/DHCPv6 from zte_wan6 to the LAN. zte_router
 #    rewrites dhcp.lan back to ra/dhcpv6=server on every boot, which leaves
 #    clients without a global IPv6. With IPA and the mihomo TUN also on, the
 #    agent keeps TUN'd IPv6 untracked so IPA offload cannot stall it.
+#    The /64 is also routed on-link to br-lan. odhcpd's learned /128s alone
+#    are not enough: the kernel drops an idle neighbour after about a minute
+#    (gc_thresh1=1 here), odhcpd then drops its route, and replies to that
+#    client follow the default route back out the WAN. NDP relay stays off
+#    on zte_wan6. The WAN is raw IP, so the pings odhcpd sends there for
+#    every LAN NS leave NOARP neighbours that it takes for upstream hosts; it
+#    then routed those clients to the WAN and answered NS (DAD too) for them
+#    on br-lan (2026-10-30).
 # 2. Clock: ZTE's NITZ time sync writes Beijing wall time into the kernel
 #    clock while the OS timezone is UTC, so the epoch runs 8h fast. The OS
 #    timezone is CST-8 now; this keeps the kernel clock on true UTC using the
@@ -17,6 +25,8 @@
 LOG=/tmp/net_time_guard.log
 BOOT_DELAY=90             # let zte_router finish its boot-time rewrites
 CHECK_SECS=300
+ROUTE_SECS=15             # re-check the LAN /64 route (tracks a new WAN prefix)
+V6_PROTO=99               # route protocol tag of the /64 this script owns
 MAX_SKEW=60
 MAX_LOG=32768
 TIME_URLS="http://www.baidu.com http://www.qq.com http://www.aliyun.com"
@@ -30,8 +40,11 @@ fix_v6_relay() {
     want() { [ "$(uci -q get "$1")" = "$2" ] || { uci set "$1=$2"; changed=1; }; }
     want dhcp.wan_v6.interface zte_wan6
     want dhcp.wan_v6.master 1
-    for o in ra dhcpv6 ndp; do
+    want dhcp.wan_v6.ndp disabled
+    for o in ra dhcpv6; do
         want dhcp.wan_v6.$o relay
+    done
+    for o in ra dhcpv6 ndp; do
         want dhcp.lan.$o relay
     done
     if [ $changed = 1 ]; then
@@ -39,6 +52,34 @@ fix_v6_relay() {
         /etc/init.d/odhcpd restart >/dev/null 2>&1
         log "dhcp IPv6 relay re-applied"
     fi
+}
+
+fix_v6_route() {
+    wan=$(ifstatus zte_wan6 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)
+    [ -n "$wan" ] || return 0
+    pfx=$(ip -6 addr show dev "$wan" scope global -deprecated -tentative 2>/dev/null |
+        awk '$1 == "inet6" && $2 ~ /\/64$/ { print $2; exit }')
+    if [ -z "$pfx" ]; then
+        ip -6 route flush dev br-lan proto $V6_PROTO 2>/dev/null
+        return 0
+    fi
+    # $pfx keeps the WAN address's host bits; ip masks them for both calls.
+    if [ -z "$(ip -6 route show exact "$pfx" dev br-lan proto $V6_PROTO)" ]; then
+        ip -6 route flush dev br-lan proto $V6_PROTO 2>/dev/null
+        ip -6 route add "$pfx" dev br-lan proto $V6_PROTO \
+            && log "LAN IPv6 $(ip -6 route show dev br-lan proto $V6_PROTO | awk '{ print $1; exit }') routed on-link"
+    fi
+    # Undo what odhcpd learned while NDP relay was on for the WAN: /128s to
+    # LAN clients via the WAN, and proxy entries for them. odhcpd ignores
+    # events on the WAN now, so it would never remove them itself.
+    ip -6 route show root "$pfx" dev "$wan" 2>/dev/null | while read -r dst _; do
+        case $dst in */*) ;; *) ip -6 route del "$dst" dev "$wan" ;; esac
+    done
+    for dev in br-lan "$wan"; do
+        ip -6 neigh show proxy to "$pfx" dev "$dev" 2>/dev/null | while read -r dst _; do
+            ip -6 neigh del proxy "$dst" dev "$dev"
+        done
+    done
 }
 
 fix_clock() {
@@ -61,8 +102,13 @@ fix_clock() {
 [ -f /data/zoneinfo/Asia/Shanghai ] && ln -sf /data/zoneinfo/Asia/Shanghai /tmp/localtime
 
 sleep $BOOT_DELAY
+n=0
 while :; do
-    fix_v6_relay
-    fix_clock
-    sleep $CHECK_SECS
+    if [ $((n % (CHECK_SECS / ROUTE_SECS))) = 0 ]; then
+        fix_v6_relay
+        fix_clock
+    fi
+    fix_v6_route
+    n=$((n + 1))
+    sleep $ROUTE_SECS
 done
