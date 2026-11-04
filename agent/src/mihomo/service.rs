@@ -795,6 +795,118 @@ pub fn tun_active() -> bool {
     Path::new("/sys/class/net").join(TUN_DEVICE).exists()
 }
 
+// LAN DNS through mihomo. dnsmasq keeps port 53 (DHCP, `.lan` names, its
+// cache) and, while mihomo answers, forwards every other name to mihomo's
+// loopback listener. The switch is a dnsmasq servers-file, re-read on
+// SIGHUP, so turning forwarding on or off never restarts dnsmasq. The
+// conf-dir entry that names the file lives in /tmp: after a reboot dnsmasq
+// starts on the carrier's resolvers until the agent turns forwarding on.
+
+/// Read by dnsmasq at start (its uci `confdir`).
+const DNSMASQ_CONF: &str = "/tmp/dnsmasq.d/mihomo-dns.conf";
+/// Holds the forwarding line while forwarding is on, and is empty otherwise.
+const DNSMASQ_SERVERS: &str = "/tmp/mihomo-dns.servers";
+
+fn forward_line() -> String {
+    // `/#/` matches every name; more specific entries (`local=/lan/`) still win.
+    format!(
+        "server=/#/{}#{}\n",
+        super::config::DNS_HOST,
+        super::config::DNS_PORT
+    )
+}
+
+/// True while dnsmasq is told to forward to mihomo.
+pub fn dns_forwarding() -> bool {
+    fs::read_to_string(DNSMASQ_SERVERS).is_ok_and(|s| s == forward_line())
+}
+
+/// SIGHUP: dnsmasq re-reads the servers-file and empties its cache.
+pub fn flush_dnsmasq_cache() {
+    hup_dnsmasq();
+}
+
+fn hup_dnsmasq() {
+    let Ok(out) = Command::new("pidof").arg("dnsmasq").bounded_output() else {
+        return;
+    };
+    for pid in String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .filter_map(|p| p.parse::<libc::pid_t>().ok())
+    {
+        // SAFETY: kill(2) with a pid read from pidof; no memory is shared.
+        unsafe {
+            libc::kill(pid, libc::SIGHUP);
+        }
+    }
+}
+
+/// Point dnsmasq at mihomo (`on`) or back at its own resolvers.
+pub fn dns_forward_set(on: bool) -> Result<(), String> {
+    let settled = if on {
+        dns_forwarding()
+    } else {
+        fs::metadata(DNSMASQ_SERVERS).map_or(true, |m| m.len() == 0)
+    };
+    if settled {
+        return Ok(());
+    }
+    let body = if on { forward_line() } else { String::new() };
+    fs::write(DNSMASQ_SERVERS, body).map_err(|e| format!("cannot write {DNSMASQ_SERVERS}: {e}"))?;
+    if on && !Path::new(DNSMASQ_CONF).exists() {
+        // First use since boot: dnsmasq only learns the servers-file at start.
+        fs::write(DNSMASQ_CONF, format!("servers-file={DNSMASQ_SERVERS}\n"))
+            .map_err(|e| format!("cannot write {DNSMASQ_CONF}: {e}"))?;
+        let ok = Command::new("/etc/init.d/dnsmasq")
+            .arg("restart")
+            .bounded_output()
+            .is_ok_and(|o| o.status.success());
+        if !ok {
+            let _ = fs::write(DNSMASQ_SERVERS, "");
+            let _ = fs::remove_file(DNSMASQ_CONF);
+            let _ = Command::new("/etc/init.d/dnsmasq")
+                .arg("restart")
+                .bounded_output();
+            return Err("dnsmasq did not restart with the mihomo servers-file".into());
+        }
+    } else {
+        hup_dnsmasq();
+    }
+    Ok(())
+}
+
+/// Does mihomo's DNS listener answer? One A query for a mainland name, which
+/// never needs a proxy, so a failure means mihomo's resolver itself is down.
+pub fn dns_probe() -> bool {
+    use std::net::UdpSocket;
+    const NAME: &[&str] = &["www", "baidu", "com"];
+    let mut query: Vec<u8> = vec![0x4d, 0x48, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0];
+    for label in NAME {
+        query.push(label.len() as u8);
+        query.extend_from_slice(label.as_bytes());
+    }
+    query.extend_from_slice(&[0, 0, 1, 0, 1]);
+    let Ok(sock) = UdpSocket::bind("127.0.0.1:0") else {
+        return false;
+    };
+    let _ = sock.set_read_timeout(Some(Duration::from_millis(1500)));
+    let target = format!("{}:{}", super::config::DNS_HOST, super::config::DNS_PORT);
+    if sock.send_to(&query, target).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 512];
+    match sock.recv(&mut buf) {
+        // Same id, a response, rcode 0, at least one answer.
+        Ok(n) if n >= 12 => {
+            buf[0..2] == query[0..2]
+                && buf[2] & 0x80 != 0
+                && buf[3] & 0x0f == 0
+                && u16::from_be_bytes([buf[6], buf[7]]) > 0
+        }
+        _ => false,
+    }
+}
+
 pub fn truncate_log_if_large() {
     if fs::metadata(LOG)
         .map(|m| m.len() > LOG_CAP)

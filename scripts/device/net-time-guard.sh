@@ -13,7 +13,8 @@
 #    on zte_wan6. The WAN is raw IP, so the pings odhcpd sends there for
 #    every LAN NS leave NOARP neighbours that it takes for upstream hosts; it
 #    then routed those clients to the WAN and answered NS (DAD too) for them
-#    on br-lan (2026-10-30).
+#    on br-lan (2026-10-30). Only the router is advertised as the IPv6
+#    resolver, so every LAN lookup goes through dnsmasq (2026-11-04).
 # 2. Clock: ZTE's NITZ time sync writes Beijing wall time into the kernel
 #    clock while the OS timezone is UTC, so the epoch runs 8h fast. The OS
 #    timezone is CST-8 now; this keeps the kernel clock on true UTC using the
@@ -47,6 +48,16 @@ fix_v6_relay() {
     for o in ra dhcpv6 ndp; do
         want dhcp.lan.$o relay
     done
+    # Advertise only the router as the LAN's IPv6 resolver. The firmware
+    # lists the carrier's resolvers here too, and clients that pick those
+    # bypass dnsmasq (and mihomo behind it) entirely.
+    ll=$(ip -6 addr show dev br-lan scope link 2>/dev/null |
+        awk '$1 == "inet6" { split($2, a, "/"); print a[1]; exit }')
+    if [ -n "$ll" ] && [ "$(uci -q get dhcp.lan.dns)" != "$ll" ]; then
+        uci -q delete dhcp.lan.dns
+        uci add_list dhcp.lan.dns="$ll"
+        changed=1
+    fi
     if [ $changed = 1 ]; then
         uci commit dhcp
         /etc/init.d/odhcpd restart >/dev/null 2>&1

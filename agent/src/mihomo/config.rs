@@ -20,6 +20,10 @@ pub const TUN_DEVICE: &str = "mihomo";
 /// The only interface whose traffic the TUN captures. The router's own
 /// traffic (ZTE daemons, DNS, NTP, the agent) never enters the tunnel.
 pub const LAN_BRIDGE: &str = "br-lan";
+/// mihomo's DNS listener while the TUN runs. Loopback only: dnsmasq keeps
+/// port 53 (DHCP, `.lan` names) and forwards to it.
+pub const DNS_HOST: &str = "127.0.0.1";
+pub const DNS_PORT: u16 = 1053;
 pub const HEALTH_URL: &str = "https://www.gstatic.com/generate_204";
 pub const DEFAULT_PORT: u16 = 7890;
 const MAX_SUBSCRIPTIONS: usize = 16;
@@ -441,14 +445,29 @@ fn apply_runtime(config: &mut Value, state: &State, lan_ip: &str, secret: &str, 
                     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
                     "fc00::/7", "fe80::/10",
                 ],
-                // DNS stays with dnsmasq; domains come from the sniffer.
-                "dns-hijack": [],
+                // DNS a LAN client sends past the router (hard-coded
+                // resolvers, the carrier's) is answered by mihomo too.
+                // Queries to the router itself are excluded from the TUN
+                // and reach dnsmasq, which forwards them to mihomo.
+                "dns-hijack": ["any:53", "tcp://any:53"],
             }),
         );
-        // Without DNS hijack, LAN clients resolve through dnsmasq and may get
-        // poisoned addresses: the sniffed domain must replace the destination
-        // so mihomo (or the node) connects to the real host. A provider's
-        // sniffer keeps its skip list and ports.
+        // mihomo resolves for the whole LAN. Answers must be real addresses:
+        // LAN clients that run their own proxy (Surge) match IP rules and
+        // node addresses, so fake-ip would break them. The provider's
+        // upstreams, policy and fallback are kept.
+        let dns = obj
+            .entry("dns")
+            .or_insert_with(|| json!({"ipv6": true, "nameserver": ["223.5.5.5", "119.29.29.29"]}));
+        if let Some(dns) = dns.as_object_mut() {
+            dns.insert("enable".into(), json!(true));
+            dns.insert("listen".into(), json!(format!("{DNS_HOST}:{DNS_PORT}")));
+            dns.insert("enhanced-mode".into(), json!("redir-host"));
+        }
+        // Some answers can still be poisoned (an upstream without a clean
+        // fallback, a client that bypasses DNS), so the sniffed domain
+        // replaces the destination and mihomo (or the node) connects to the
+        // real host. A provider's sniffer keeps its skip list and ports.
         let sniffing = obj
             .get("sniffer")
             .and_then(|v| v["enable"].as_bool())
@@ -563,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn tun_is_lan_only_and_leaves_dns_alone() {
+    fn tun_is_lan_only_and_mihomo_serves_lan_dns() {
         let state = State {
             settings: Settings {
                 tun: true,
@@ -574,7 +593,10 @@ mod tests {
         let c = render(&state, "192.168.0.1", None, false).unwrap();
         assert_eq!(c["tun"]["device"], TUN_DEVICE);
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
-        assert_eq!(c["tun"]["dns-hijack"], json!([]));
+        assert_eq!(c["tun"]["dns-hijack"], json!(["any:53", "tcp://any:53"]));
+        assert_eq!(c["dns"]["listen"], "127.0.0.1:1053");
+        assert_eq!(c["dns"]["enhanced-mode"], "redir-host");
+        assert_eq!(c["dns"]["enable"], true);
         assert_eq!(c["sniffer"]["enable"], true);
     }
 
@@ -654,9 +676,13 @@ mod tests {
         let c = render(&state, "192.168.0.1", Some(&airport()), false).unwrap();
         assert_eq!(c["tun"]["stack"], "system");
         assert_eq!(c["tun"]["include-interface"], json!([LAN_BRIDGE]));
-        assert_eq!(c["tun"]["dns-hijack"], json!([]));
+        assert_eq!(c["tun"]["dns-hijack"], json!(["any:53", "tcp://any:53"]));
+        // mihomo answers the LAN with real addresses, from the provider's upstreams.
+        assert_eq!(c["dns"]["listen"], "127.0.0.1:1053");
+        assert_eq!(c["dns"]["enhanced-mode"], "redir-host");
+        assert_eq!(c["dns"]["nameserver"][0], "https://dns.example/dns-query");
         assert_eq!(c["sniffer"]["sniff"]["TLS"]["ports"], json!([443]));
-        // No DNS hijack on the router: sniffed domains must override poisoned IPs.
+        // Answers can still be poisoned: sniffed domains must override the destination.
         assert_eq!(c["sniffer"]["override-destination"], true);
         assert_eq!(c["sniffer"]["sniff"]["TLS"]["override-destination"], true);
     }

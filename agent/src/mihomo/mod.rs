@@ -76,6 +76,8 @@ struct Inner {
     health: Health,
     /// The mainland bypass rules were in place at the last check.
     bypass_active: bool,
+    /// Consecutive failed checks of mihomo's DNS listener.
+    dns_failures: u8,
     /// The live config's controller secret, cached by file modification time.
     panel_secret: Option<(std::time::SystemTime, String)>,
 }
@@ -214,6 +216,7 @@ impl Manager {
             // Rules left by a mihomo that died with the previous agent; the
             // IPv6 notrack in particular breaks LAN IPv6 without the TUN.
             service::firewall_remove();
+            dns_forward_off();
         }
         Self {
             inner: Mutex::new(Inner {
@@ -230,6 +233,7 @@ impl Manager {
                 traffic: None,
                 firewall_checked: None,
                 bypass_active: false,
+                dns_failures: 0,
                 panel_secret: None,
                 profile_attempt: None,
                 health: Health::default(),
@@ -544,6 +548,7 @@ impl Inner {
             );
             service::firewall_remove();
             service::cleanup_routing();
+            dns_forward_off();
         }
         while self
             .crashes
@@ -598,6 +603,34 @@ impl Inner {
                 }
             }
             self.sync_bypass();
+            self.sync_dns();
+        } else if !(self.state.settings.tun && self.alive()) && service::dns_forwarding() {
+            dns_forward_off();
+        }
+    }
+
+    /// Forward LAN DNS (dnsmasq) to mihomo while the TUN runs and mihomo's
+    /// resolver answers. Two failed checks in a row hand DNS back to the
+    /// carrier's resolvers, so a stuck mihomo cannot take name resolution
+    /// down with it; the next good check brings forwarding back.
+    fn sync_dns(&mut self) {
+        if service::dns_probe() {
+            self.dns_failures = 0;
+            if !service::dns_forwarding() {
+                match service::dns_forward_set(true) {
+                    Ok(()) => eprintln!("[mihomo] LAN DNS now resolved by mihomo"),
+                    Err(e) => {
+                        eprintln!("[mihomo] LAN DNS forwarding failed: {e}");
+                        self.last_error = Some(format!("LAN DNS: {e}"));
+                    }
+                }
+            }
+        } else {
+            self.dns_failures = self.dns_failures.saturating_add(1);
+            if self.dns_failures >= 2 && service::dns_forwarding() {
+                eprintln!("[mihomo] mihomo DNS not answering — LAN DNS back to the carrier");
+                dns_forward_off();
+            }
         }
     }
 
@@ -678,6 +711,7 @@ impl Inner {
             if !process.alive() {
                 service::firewall_remove();
                 service::cleanup_routing();
+                dns_forward_off();
                 return Err(service::log_tail_error()
                     .unwrap_or_else(|| "mihomo exited during start".into()));
             }
@@ -710,6 +744,7 @@ impl Inner {
         }
         service::firewall_remove();
         service::cleanup_routing();
+        dns_forward_off();
         self.traffic = None;
         self.bypass_active = false;
     }
@@ -774,6 +809,10 @@ impl Inner {
             Duration::from_secs(30),
         )?;
         if reply.ok() {
+            // New upstreams or rules: drop answers dnsmasq cached from the old ones.
+            if service::dns_forwarding() {
+                service::flush_dnsmasq_cache();
+            }
             Ok(())
         } else {
             Err(format!(
@@ -858,6 +897,13 @@ impl Inner {
             "last_error": self.last_error,
             "notice": self.notice,
         })
+    }
+}
+
+/// Hand LAN DNS back to dnsmasq's own resolvers; failures are only logged.
+fn dns_forward_off() {
+    if let Err(e) = service::dns_forward_set(false) {
+        eprintln!("[mihomo] could not stop LAN DNS forwarding: {e}");
     }
 }
 
@@ -1663,6 +1709,7 @@ mod tests {
                     traffic: None,
                     firewall_checked: None,
                     bypass_active: false,
+                    dns_failures: 0,
                     panel_secret: None,
                     profile_attempt: None,
                     health: Health::default(),
