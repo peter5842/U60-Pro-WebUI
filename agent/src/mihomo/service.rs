@@ -5,6 +5,7 @@
 //! TUN's ip rules exist only while mihomo runs. A reboot always returns the
 //! router to its stock forwarding path.
 
+use std::cell::OnceCell;
 use std::fs::{self, OpenOptions};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
@@ -25,6 +26,10 @@ const LOG_CAP: u64 = 1024 * 1024;
 /// Open-file limit for mihomo (kernel nr_open allows up to 1M).
 const NOFILE_LIMIT: libc::rlim_t = 65536;
 const FW_COMMENT: &str = "mihomo-tun";
+/// Seconds an iptables call waits for the xtables lock. Without `-w` a call
+/// made while fw3, ipacm or the TTL handler holds the lock fails at once, and
+/// a failed `-C` read as "rule missing" re-inserted a duplicate.
+const XTABLES_WAIT_SECS: &str = "3";
 /// sing-tun's default ip rule priority range and route table.
 const RULE_PREFS: std::ops::RangeInclusive<u32> = 9000..=9099;
 const ROUTE_TABLE: &str = "2022";
@@ -248,14 +253,28 @@ fn fw_rules() -> [Vec<&'static str>; 3] {
     ]
 }
 
-fn fw(bin: &str, op: &str, rule: &[&str]) -> bool {
-    let mut args: Vec<&str> = vec![op, rule[0]];
+/// `iptables`/`ip6tables` that waits for the xtables lock.
+fn xtables(bin: &str) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.args(["-w", XTABLES_WAIT_SECS]);
+    cmd
+}
+
+/// `[chain, spec...]` of a TUN accept, as it is written and listed.
+fn accept_rule(rule: &[&'static str]) -> Vec<&'static str> {
+    let mut full = rule.to_vec();
+    full.extend_from_slice(&["-m", "comment", "--comment", FW_COMMENT, "-j", "ACCEPT"]);
+    full
+}
+
+fn fw(bin: &str, op: &str, rule: &[&'static str]) -> bool {
+    let full = accept_rule(rule);
+    let mut args: Vec<&str> = vec![op, full[0]];
     if op == "-I" {
         args.push("1");
     }
-    args.extend_from_slice(&rule[1..]);
-    args.extend_from_slice(&["-m", "comment", "--comment", FW_COMMENT, "-j", "ACCEPT"]);
-    Command::new(bin)
+    args.extend_from_slice(&full[1..]);
+    xtables(bin)
         .args(&args)
         .bounded_output()
         .map(|o| o.status.success())
@@ -263,16 +282,31 @@ fn fw(bin: &str, op: &str, rule: &[&str]) -> bool {
 }
 
 /// The accepts, plus the IPv6 NOTRACK exactly while sing-tun routes IPv6.
+#[cfg(test)]
 pub fn firewall_present() -> bool {
-    let accepts = ["iptables", "ip6tables"]
-        .iter()
-        .all(|bin| fw_rules().iter().all(|rule| fw(bin, "-C", rule)));
-    accepts
-        && if tun_routes_v6() {
-            notrack_present()
-        } else {
-            !notrack_jumps().iter().any(|rule| raw6("-C", rule))
-        }
+    firewall_present_in(&RuleState::new())
+}
+
+/// [`firewall_present`] against one read of the rule state.
+pub fn firewall_present_in(s: &RuleState) -> bool {
+    let accepts = ["iptables", "ip6tables"].iter().all(|bin| {
+        s.filter(bin)
+            .is_some_and(|l| fw_rules().iter().all(|rule| l.has(&accept_rule(rule))))
+    });
+    if !accepts {
+        return false;
+    }
+    let raw = s.raw6();
+    if routes_v6_via_tun(s.ip_rules("-6")) {
+        raw.is_some_and(|raw| {
+            raw.has(&notrack_rule())
+                && cn6_bypassing_in(s) == raw.has(&cn6_return_rule())
+                && notrack_jumps().iter().all(|rule| raw.has(rule))
+        })
+    } else {
+        // Unreadable counts as absent, as a failed `-C` did.
+        !raw.is_some_and(|raw| notrack_jumps().iter().any(|rule| raw.has(rule)))
+    }
 }
 
 pub fn firewall_add() -> Result<(), String> {
@@ -331,16 +365,23 @@ const GLOBAL_V6: &str = "2000::/3";
 
 /// sing-tun routes LAN IPv6 into the TUN: its IPv6 rules use table 2022.
 fn tun_routes_v6() -> bool {
+    routes_v6_via_tun(&ip_rule_listing("-6"))
+}
+
+fn routes_v6_via_tun(ip6_rules: &str) -> bool {
+    ip6_rules.lines().any(|l| {
+        let words: Vec<&str> = l.split_whitespace().collect();
+        words.windows(2).any(|w| w == ["lookup", ROUTE_TABLE])
+    })
+}
+
+/// `ip <family> rule show`; empty when it cannot be read.
+fn ip_rule_listing(family: &str) -> String {
     Command::new("ip")
-        .args(["-6", "rule", "show"])
+        .args([family, "rule", "show"])
         .bounded_output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout).lines().any(|l| {
-                let words: Vec<&str> = l.split_whitespace().collect();
-                words.windows(2).any(|w| w == ["lookup", ROUTE_TABLE])
-            })
-        })
-        .unwrap_or(false)
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 /// LAN packets jump to the chain (where the bypass can return early); TUN
@@ -401,7 +442,7 @@ fn raw6(op: &str, rule: &[&str]) -> bool {
         args.push("1");
     }
     args.extend_from_slice(&rule[1..]);
-    Command::new("ip6tables")
+    xtables("ip6tables")
         .args(&args)
         .bounded_output()
         .map(|o| o.status.success())
@@ -409,22 +450,16 @@ fn raw6(op: &str, rule: &[&str]) -> bool {
 }
 
 fn notrack_chain_exists() -> bool {
-    Command::new("ip6tables")
+    xtables("ip6tables")
         .args(["-t", "raw", "-S", NOTRACK_CHAIN])
         .bounded_output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
-fn notrack_present() -> bool {
-    raw6("-C", &notrack_rule())
-        && cn6_bypassing() == raw6("-C", &cn6_return_rule())
-        && notrack_jumps().iter().all(|rule| raw6("-C", rule))
-}
-
 fn notrack_add() -> Result<(), String> {
     if !notrack_chain_exists()
-        && !Command::new("ip6tables")
+        && !xtables("ip6tables")
             .args(["-t", "raw", "-N", NOTRACK_CHAIN])
             .bounded_output()
             .map(|o| o.status.success())
@@ -467,7 +502,7 @@ fn notrack_remove() {
         }
     }
     for op in ["-F", "-X"] {
-        let _ = Command::new("ip6tables")
+        let _ = xtables("ip6tables")
             .args(["-t", "raw", op, NOTRACK_CHAIN])
             .bounded_output();
     }
@@ -587,12 +622,10 @@ fn prefixes_of<A: std::str::FromStr>(text: &str, max_len: u8) -> Vec<&str> {
         .collect()
 }
 
-fn bypass_mark_rule(f: &Family, op: &str) -> bool {
-    let mut args = vec!["-t", "mangle", op, "PREROUTING"];
-    if op == "-I" {
-        args.push("1");
-    }
-    args.extend_from_slice(&[
+/// `[chain, spec...]` of a family's mainland mark rule (mangle table).
+fn mark_rule(f: &Family) -> Vec<&'static str> {
+    vec![
+        "PREROUTING",
         "-i",
         LAN_BRIDGE,
         "-m",
@@ -608,8 +641,17 @@ fn bypass_mark_rule(f: &Family, op: &str) -> bool {
         "MARK",
         "--set-xmark",
         BYPASS_MARK,
-    ]);
-    Command::new(f.iptables)
+    ]
+}
+
+fn bypass_mark_rule(f: &Family, op: &str) -> bool {
+    let rule = mark_rule(f);
+    let mut args = vec!["-t", "mangle", op, rule[0]];
+    if op == "-I" {
+        args.push("1");
+    }
+    args.extend_from_slice(&rule[1..]);
+    xtables(f.iptables)
         .args(&args)
         .bounded_output()
         .map(|o| o.status.success())
@@ -617,15 +659,11 @@ fn bypass_mark_rule(f: &Family, op: &str) -> bool {
 }
 
 fn bypass_rule_present(f: &Family) -> bool {
-    Command::new("ip")
-        .args([f.ip, "rule", "show"])
-        .bounded_output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .any(|l| l.starts_with(&format!("{BYPASS_PREF}:")))
-        })
-        .unwrap_or(false)
+    has_pref(&ip_rule_listing(f.ip), BYPASS_PREF)
+}
+
+fn has_pref(ip_rules: &str, pref: &str) -> bool {
+    ip_rules.lines().any(|l| l.split(':').next() == Some(pref))
 }
 
 fn set_present(set: &str) -> bool {
@@ -641,11 +679,217 @@ fn cn6_bypassing() -> bool {
     bypass_mark_rule(V6, "-C")
 }
 
+fn cn6_bypassing_in(s: &RuleState) -> bool {
+    s.mangle(V6.iptables).is_some_and(|l| l.has(&mark_rule(V6)))
+}
+
 pub fn bypass_present() -> bool {
-    FAMILIES
-        .iter()
-        .all(|f| set_present(f.set) && bypass_mark_rule(f, "-C") && bypass_rule_present(f))
-        && (!notrack_chain_exists() || raw6("-C", &cn6_return_rule()))
+    bypass_present_in(&RuleState::new())
+}
+
+/// [`bypass_present`] against one read of the rule state.
+pub fn bypass_present_in(s: &RuleState) -> bool {
+    FAMILIES.iter().all(|f| {
+        s.sets().is_some_and(|sets| sets.iter().any(|n| n == f.set))
+            && s.mangle(f.iptables).is_some_and(|l| l.has(&mark_rule(f)))
+            && has_pref(s.ip_rules(f.ip), BYPASS_PREF)
+    }) && s
+        .raw6()
+        // Unreadable counts as no notrack chain, as a failed `-S` did.
+        .is_none_or(|raw| !raw.has_chain(NOTRACK_CHAIN) || raw.has(&cn6_return_rule()))
+}
+
+// ── One read of the rule state per check ─────────────────────────────────────
+//
+// The 15 s check used to run one `-C` per rule: 13 forks a tick with the
+// bypass off, 28 with it on. It now lists each table it needs once with `-S`
+// (the syntax the rules are written in) and looks the tagged rules up there:
+// 6 and 8 forks. Adding and removing rules still uses `-C`/`-I`/`-D`; that
+// only runs when something changed.
+
+/// The rule state one check reads; each source is fetched at most once, and
+/// only if a check needs it.
+#[derive(Default)]
+pub struct RuleState {
+    filter4: OnceCell<Option<Listing>>,
+    filter6: OnceCell<Option<Listing>>,
+    mangle4: OnceCell<Option<Listing>>,
+    mangle6: OnceCell<Option<Listing>>,
+    raw6: OnceCell<Option<Listing>>,
+    rules4: OnceCell<String>,
+    rules6: OnceCell<String>,
+    sets: OnceCell<Option<Vec<String>>>,
+}
+
+impl RuleState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn filter(&self, bin: &str) -> Option<&Listing> {
+        let cell = if bin == "iptables" {
+            &self.filter4
+        } else {
+            &self.filter6
+        };
+        cell.get_or_init(|| list_table(bin, "filter", None))
+            .as_ref()
+    }
+
+    fn mangle(&self, bin: &str) -> Option<&Listing> {
+        let cell = if bin == "iptables" {
+            &self.mangle4
+        } else {
+            &self.mangle6
+        };
+        cell.get_or_init(|| list_table(bin, "mangle", Some("PREROUTING")))
+            .as_ref()
+    }
+
+    fn raw6(&self) -> Option<&Listing> {
+        self.raw6
+            .get_or_init(|| list_table("ip6tables", "raw", None))
+            .as_ref()
+    }
+
+    fn ip_rules(&self, family: &str) -> &str {
+        let cell = if family == "-4" {
+            &self.rules4
+        } else {
+            &self.rules6
+        };
+        cell.get_or_init(|| ip_rule_listing(family))
+    }
+
+    fn sets(&self) -> Option<&[String]> {
+        self.sets
+            .get_or_init(|| {
+                let out = Command::new("ipset")
+                    .args(["list", "-n"])
+                    .bounded_output()
+                    .ok()?;
+                out.status.success().then(|| {
+                    String::from_utf8_lossy(&out.stdout)
+                        .lines()
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect()
+                })
+            })
+            .as_deref()
+    }
+}
+
+/// `<bin> -t <table> -S [chain]`, parsed; `None` when it cannot be read.
+fn list_table(bin: &str, table: &str, chain: Option<&str>) -> Option<Listing> {
+    let mut cmd = xtables(bin);
+    cmd.args(["-t", table, "-S"]);
+    if let Some(chain) = chain {
+        cmd.arg(chain);
+    }
+    let out = cmd.bounded_output().ok()?;
+    out.status
+        .success()
+        .then(|| Listing::parse(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// One table as `iptables -S` prints it.
+#[derive(Debug, Default)]
+struct Listing {
+    chains: Vec<String>,
+    /// Each `-A` line in [`canonical`] form.
+    rules: Vec<Vec<String>>,
+}
+
+impl Listing {
+    fn parse(text: &str) -> Self {
+        let mut listing = Listing::default();
+        for line in text.lines() {
+            let words = shell_words(line);
+            match words.first().map(String::as_str) {
+                Some("-N") if words.len() > 1 => listing.chains.push(words[1].clone()),
+                Some("-A") if words.len() > 1 => listing.rules.push(canonical(&words[1..])),
+                _ => {}
+            }
+        }
+        listing
+    }
+
+    /// Whether `[chain, spec...]` is in the table.
+    fn has(&self, rule: &[&str]) -> bool {
+        let want = canonical(rule);
+        self.rules.contains(&want)
+    }
+
+    fn has_chain(&self, name: &str) -> bool {
+        self.chains.iter().any(|c| c == name)
+    }
+}
+
+/// Split a line like the shell does for `iptables -S` output: on blanks, with
+/// double quotes grouping (iptables quotes comments that contain spaces).
+fn shell_words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut in_word = false;
+    let mut quoted = false;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                in_word = true;
+            }
+            '\\' if quoted => {
+                if let Some(next) = chars.next() {
+                    word.push(next);
+                }
+            }
+            c if c.is_whitespace() && !quoted => {
+                if in_word {
+                    words.push(std::mem::take(&mut word));
+                    in_word = false;
+                }
+            }
+            c => {
+                word.push(c);
+                in_word = true;
+            }
+        }
+    }
+    if in_word {
+        words.push(word);
+    }
+    words
+}
+
+/// `[chain, spec...]` as the chain followed by its option groups (an option
+/// and its arguments, with any `!` in front) in sorted order. iptables lists
+/// matches in its own order (`-d` before `-i`) whatever order a rule was
+/// added in, so the order of groups cannot be compared.
+fn canonical<S: AsRef<str>>(rule: &[S]) -> Vec<String> {
+    let Some((chain, spec)) = rule.split_first() else {
+        return Vec::new();
+    };
+    let mut groups: Vec<String> = Vec::new();
+    for word in spec.iter().map(AsRef::as_ref) {
+        let after_bang = groups.last().is_some_and(|g| g == "!");
+        let starts_group = word == "!"
+            || groups.is_empty()
+            || (word.starts_with('-') && word.len() > 1 && !after_bang);
+        match groups.last_mut() {
+            Some(last) if !starts_group => {
+                last.push(' ');
+                last.push_str(word);
+            }
+            _ => groups.push(word.to_string()),
+        }
+    }
+    groups.sort();
+    let mut out = Vec::with_capacity(groups.len() + 1);
+    out.push(chain.as_ref().to_string());
+    out.extend(groups);
+    out
 }
 
 fn load_set(f: &Family, prefixes: &[&str]) -> Result<usize, String> {
@@ -1031,6 +1275,126 @@ mod tests {
         );
         assert!(last_error_line("level=warning msg=\"x\"\n", false).is_none());
         assert!(last_error_line("\n \n", true).is_none());
+    }
+
+    /// `ip6tables -t raw -S` as captured on the U60 (2026-11-06), trimmed.
+    const RAW6: &str = r#"-P PREROUTING ACCEPT
+-P OUTPUT ACCEPT
+-N mihomo_notrack
+-N zone_lan_helper
+-A PREROUTING -d 2000::/3 -i mihomo -m comment --comment mihomo-tun -j CT --notrack
+-A PREROUTING -d 2000::/3 -i br-lan -m comment --comment mihomo-tun -j mihomo_notrack
+-A PREROUTING -i br-lan -m comment --comment "!fw3: lan CT helper assignment" -j zone_lan_helper
+-A mihomo_notrack -j CT --notrack
+-A zone_lan_helper -p tcp -m comment --comment "!fw3: FTP passive connection tracking" -m tcp --dport 21 -j CT --helper ftp
+"#;
+
+    /// `ip6tables -S` (filter) as captured on the U60, the TUN accepts only.
+    const FILTER6: &str = r#"-P INPUT DROP
+-A INPUT -i mihomo -m comment --comment mihomo-tun -j ACCEPT
+-A FORWARD -i mihomo -o br-lan -m comment --comment mihomo-tun -j ACCEPT
+-A FORWARD -i br-lan -o mihomo -m comment --comment mihomo-tun -j ACCEPT
+"#;
+
+    #[test]
+    fn listing_finds_rules_whatever_order_iptables_prints_them_in() {
+        let raw = Listing::parse(RAW6);
+        assert!(raw.has_chain(NOTRACK_CHAIN));
+        assert!(
+            !raw.has_chain("PREROUTING"),
+            "-P lines are policies, not chains"
+        );
+        assert!(raw.has(&notrack_rule()));
+        // Written `-i br-lan -d 2000::/3`, listed `-d 2000::/3 -i br-lan`.
+        for jump in notrack_jumps() {
+            assert!(raw.has(&jump), "{jump:?}");
+        }
+        assert!(!raw.has(&cn6_return_rule()));
+        // fw3's quoted comment parses as one word.
+        assert!(raw.has(&[
+            "PREROUTING",
+            "-i",
+            "br-lan",
+            "-m",
+            "comment",
+            "--comment",
+            "!fw3: lan CT helper assignment",
+            "-j",
+            "zone_lan_helper",
+        ]));
+
+        let filter = Listing::parse(FILTER6);
+        for rule in fw_rules() {
+            assert!(filter.has(&accept_rule(&rule)), "{rule:?}");
+        }
+    }
+
+    #[test]
+    fn listing_does_not_match_a_rule_that_differs() {
+        let filter = Listing::parse(FILTER6);
+        // Same options in another chain, another interface, another target.
+        assert!(!filter.has(&accept_rule(&["OUTPUT", "-i", TUN_DEVICE])));
+        assert!(!filter.has(&accept_rule(&["INPUT", "-i", LAN_BRIDGE])));
+        assert!(!filter.has(&["INPUT", "-i", TUN_DEVICE, "-j", "ACCEPT"]));
+        assert!(!Listing::parse("").has(&accept_rule(&fw_rules()[0])));
+    }
+
+    #[test]
+    fn listing_matches_the_mark_rule_as_iptables_saves_it() {
+        let v4 = &FAMILIES[0];
+        let listed = Listing::parse(
+            "-P PREROUTING ACCEPT\n\
+             -A PREROUTING -j smart_mng\n\
+             -A PREROUTING -i br-lan -m set --match-set mihomo-cn dst -m comment --comment mihomo-tun -j MARK --set-xmark 0x10000000/0x10000000\n",
+        );
+        assert!(listed.has(&mark_rule(v4)));
+        assert!(!listed.has(&mark_rule(V6)), "the v6 rule names another set");
+    }
+
+    #[test]
+    fn canonical_keeps_negation_with_its_option() {
+        assert_eq!(
+            canonical(&["C", "!", "-i", "lo", "-j", "X"]),
+            canonical(&["C", "-j", "X", "!", "-i", "lo"])
+        );
+        assert_ne!(
+            canonical(&["C", "!", "-i", "lo", "-j", "X"]),
+            canonical(&["C", "-i", "lo", "-j", "X"])
+        );
+    }
+
+    #[test]
+    fn shell_words_handles_quotes_and_escapes() {
+        assert_eq!(
+            shell_words(r#"-A X -m comment --comment "a \"b\" c" -j Y"#),
+            [
+                "-A",
+                "X",
+                "-m",
+                "comment",
+                "--comment",
+                "a \"b\" c",
+                "-j",
+                "Y"
+            ]
+        );
+        assert_eq!(shell_words("  a   b "), ["a", "b"]);
+        assert_eq!(shell_words(r#"--comment """#), ["--comment", ""]);
+    }
+
+    #[test]
+    fn ip_rule_listings_are_read_by_pref_and_table() {
+        let v6 = "0:\tfrom all lookup local\n9003:\tnot from all dport 53 lookup main suppress_prefixlength 0\n9005:\tfrom all lookup 2022\n";
+        assert!(routes_v6_via_tun(v6));
+        assert!(!routes_v6_via_tun(
+            "0:\tfrom all lookup local\n32766:\tfrom all lookup main\n"
+        ));
+        assert!(!has_pref(v6, BYPASS_PREF));
+        assert!(has_pref(
+            "8999:\tfrom all fwmark 0x10000000/0x10000000 lookup main\n",
+            BYPASS_PREF
+        ));
+        assert!(!has_pref("89990:\tfrom all lookup main\n", BYPASS_PREF));
     }
 
     #[test]

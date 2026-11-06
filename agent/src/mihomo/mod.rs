@@ -596,13 +596,16 @@ impl Inner {
                 .is_none_or(|t| t.elapsed() >= FIREWALL_CHECK_EVERY)
         {
             self.firewall_checked = Some(Instant::now());
-            if !service::firewall_present() {
+            let mut rules = service::RuleState::new();
+            if !service::firewall_present_in(&rules) {
                 eprintln!("[mihomo] TUN firewall rules were missing (fw3 reload?) — restoring");
                 if let Err(e) = service::firewall_add() {
                     self.last_error = Some(e);
                 }
+                // The bypass check reads tables the add may have changed.
+                rules = service::RuleState::new();
             }
-            self.sync_bypass();
+            self.sync_bypass(&rules);
             self.sync_dns();
         } else if !(self.state.settings.tun && self.alive()) && service::dns_forwarding() {
             dns_forward_off();
@@ -637,13 +640,16 @@ impl Inner {
     /// Bring the mainland bypass in line with the settings (TUN running and
     /// `cn_bypass` on, list installed). Failures are reported, never fatal:
     /// without the bypass everything still flows through the TUN.
-    fn sync_bypass(&mut self) {
+    /// `rules` is a read of the rule state from this tick (or a fresh one).
+    fn sync_bypass(&mut self, rules: &service::RuleState) {
         let want = self.state.settings.tun
             && self.state.settings.cn_bypass
             && self.alive()
             && service::bypass_available();
         if want {
-            if !service::bypass_present() {
+            if service::bypass_present_in(rules) {
+                self.bypass_active = true;
+            } else {
                 match service::bypass_add() {
                     Ok(0) => eprintln!("[mihomo] mainland bypass rules restored"),
                     Ok(n) => eprintln!("[mihomo] mainland bypass on ({n} prefixes)"),
@@ -653,10 +659,10 @@ impl Inner {
                         service::bypass_remove();
                     }
                 }
+                self.bypass_active = service::bypass_present();
             }
-            self.bypass_active = service::bypass_present();
         } else {
-            if self.bypass_active || service::bypass_present() {
+            if self.bypass_active || service::bypass_present_in(rules) {
                 service::bypass_remove();
                 eprintln!("[mihomo] mainland bypass off");
             }
@@ -730,7 +736,7 @@ impl Inner {
             }
             self.firewall_checked = None;
         }
-        self.sync_bypass();
+        self.sync_bypass(&service::RuleState::new());
         if self.version.is_none() {
             self.version = service::version();
         }
@@ -797,7 +803,7 @@ impl Inner {
             return Err(e);
         }
         self.notice = None;
-        self.sync_bypass();
+        self.sync_bypass(&service::RuleState::new());
         Ok(())
     }
 
