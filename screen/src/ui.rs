@@ -13,6 +13,9 @@ pub const HEADER_H: i32 = 40;
 pub const TAB_Y: i32 = 436;
 pub const TOP: i32 = HEADER_H + 4;
 const TAB_W: i32 = 40;
+/// `:q` hands the panel back only on a second tap within this window, so a
+/// stray touch on the corner cannot end the session.
+const QUIT_CONFIRM_MS: i64 = 3_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
@@ -236,6 +239,8 @@ pub struct Ui {
     pub pet: Pet,
     /// The PROXY page's screens and the work it started.
     pub proxy: crate::proxy::View,
+    /// Until when (pet clock, ms) a second tap on `:q` exits.
+    quit_armed_until: i64,
 }
 
 impl Ui {
@@ -250,7 +255,12 @@ impl Ui {
             idle_left: None,
             pet: Pet::load(),
             proxy: crate::proxy::View::default(),
+            quit_armed_until: i64::MIN,
         }
+    }
+
+    fn quit_armed(&self) -> bool {
+        crate::pet::clock() < self.quit_armed_until
     }
 
     pub fn palette(&self) -> Palette {
@@ -277,10 +287,16 @@ impl Ui {
         if self.settings_open {
             return self.tap_settings(x, y);
         }
+        let armed = self.quit_armed();
+        self.quit_armed_until = i64::MIN;
         if y >= TAB_Y {
             let i = x / TAB_W;
             if i >= Page::ALL.len() as i32 {
-                return Action::Exit;
+                if armed {
+                    return Action::Exit;
+                }
+                self.quit_armed_until = crate::pet::clock() + QUIT_CONFIRM_MS;
+                return Action::Redraw;
             }
             self.page = Page::ALL[i as usize];
             return Action::Redraw;
@@ -466,7 +482,13 @@ impl Ui {
             c.vline(x + TAB_W - 1, TAB_Y + 8, 28, p.grid);
         }
         let x = Page::ALL.len() as i32 * TAB_W;
-        c.text_center(x + (W - x) / 2, TAB_Y + 14, Small, p.crit, ":q");
+        if self.quit_armed() {
+            // Armed: a second tap exits.
+            c.fill_rect(x + 2, TAB_Y + 4, W - x - 4, 36, p.crit);
+            c.text_center(x + (W - x) / 2, TAB_Y + 14, Small, p.bg, ":q?");
+        } else {
+            c.text_center(x + (W - x) / 2, TAB_Y + 14, Small, p.crit, ":q");
+        }
     }
 
     fn render_splash(&self, c: &mut Canvas, m: &Model, p: &Palette) {
@@ -1550,7 +1572,14 @@ mod tests {
         let mut m = sample();
         ui.tap(TAB_W + 5, TAB_Y + 10, &mut m);
         assert_eq!(ui.page, Page::Sys);
+        // `:q` asks first: one tap arms it, a second one exits.
+        assert!(matches!(ui.tap(W - 5, TAB_Y + 10, &mut m), Action::Redraw));
         assert!(matches!(ui.tap(W - 5, TAB_Y + 10, &mut m), Action::Exit));
+        // Any other tap in between disarms it.
+        ui.tap(W - 5, TAB_Y + 10, &mut m);
+        ui.tap(TAB_W + 5, TAB_Y + 10, &mut m);
+        assert!(matches!(ui.tap(W - 5, TAB_Y + 10, &mut m), Action::Redraw));
+        ui.quit_armed_until = i64::MIN;
         assert!(matches!(ui.swipe(-80), Action::Redraw));
         assert_eq!(ui.page, Page::Pwr);
     }

@@ -300,11 +300,19 @@ fn takeover(limit: Option<u64>) -> i32 {
     if let Some(s) = limit {
         cmd.arg(s.to_string());
     }
+    // The panel's stderr is held open for the whole session, so it can only
+    // be capped here, before each session starts: keep the newer half.
+    let panel_log = path("panel.log");
+    if fs::metadata(&panel_log).is_ok_and(|m| m.len() > LOG_CAP) {
+        if let Ok(data) = fs::read(&panel_log) {
+            let _ = fs::write(&panel_log, &data[data.len() / 2..]);
+        }
+    }
     let errlog = OpenOptions::new()
         .create(true)
         .append(true)
         .mode(0o600)
-        .open(path("panel.log"));
+        .open(&panel_log);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(match errlog {
