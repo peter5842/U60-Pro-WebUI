@@ -145,6 +145,9 @@ pub struct Live {
     /// Last delay of every proxy and group, in ms; 0 is a timeout.
     pub delays: HashMap<String, u32>,
     pub connections: usize,
+    /// mihomo's byte totals since it started.
+    pub down_total: u64,
+    pub up_total: u64,
     /// Busiest first.
     pub conns: Vec<Conn>,
     pub down_rate: f64,
@@ -300,6 +303,7 @@ impl Poller {
             push(&mut live.up_hist, live.up_rate as f32);
         }
         self.totals = Some((down, up, now_ms));
+        (live.down_total, live.up_total) = (down, up);
         let mut seen = HashMap::new();
         let mut conns = Vec::new();
         for raw in c["connections"].as_array().into_iter().flatten() {

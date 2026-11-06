@@ -6,11 +6,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
 pub const HISTORY: usize = 60;
+/// Ticks further apart than this restart the per-second rates.
+const MAX_RATE_GAP_SECS: f64 = 3.0;
 const CHARGE_LIMIT: &str = "/data/local/tmp/charge_limit.json";
 /// Interfaces shown on the NET page, in order, with short labels.
 const IFACES: &[(&str, &str)] = &[
@@ -634,6 +636,10 @@ pub struct Collector {
     ticks: u64,
     proxy: crate::proxy::Poller,
     proxy_open: bool,
+    /// When the last tick ran, and the seconds since the one before it: the
+    /// per-second rates divide by that rather than assuming exactly one.
+    last_at: Option<Instant>,
+    rate_secs: f64,
 }
 
 impl Default for Collector {
@@ -648,6 +654,8 @@ pub struct Needs {
     pub net: bool,
     pub lan: bool,
     pub proxy: bool,
+    /// Wi-Fi station counts are on screen (NET, LAN).
+    pub wifi: bool,
 }
 
 impl Collector {
@@ -661,6 +669,25 @@ impl Collector {
             ticks: 0,
             proxy: crate::proxy::Poller::default(),
             proxy_open: false,
+            last_at: None,
+            rate_secs: 1.0,
+        }
+    }
+
+    /// Seconds since the previous tick. After a gap (the screen was dark, or
+    /// a slow ubus call) the counters restart, so the first sample after it
+    /// is not a long span's growth shown as one second's.
+    fn mark_time(&mut self) {
+        let now = Instant::now();
+        let secs = self.last_at.map(|t| now.duration_since(t).as_secs_f64());
+        self.last_at = Some(now);
+        match secs {
+            Some(s) if s <= MAX_RATE_GAP_SECS => self.rate_secs = s.max(0.2),
+            _ => {
+                self.prev_ctxt = None;
+                self.prev_dev.clear();
+                self.rate_secs = 1.0;
+            }
         }
     }
 
@@ -668,6 +695,7 @@ impl Collector {
     pub fn tick(&mut self, m: &mut Model, needs: Needs) {
         let n = self.ticks;
         self.ticks += 1;
+        self.mark_time();
         (m.clock, m.date) = local_time();
         if n == 0 {
             m.kernel = read("/proc/sys/kernel/osrelease")
@@ -738,7 +766,7 @@ impl Collector {
                 m.radio = Some(r);
             }
         }
-        if n % if needs.lan { 3 } else { 5 } == 0 {
+        if (needs.lan || needs.wifi) && n % if needs.lan { 3 } else { 5 } == 0 {
             let s2 = iw(&["dev", "wlan0", "station", "dump"]).map(|d| parse_stations(&d, "2.4G"));
             let s5 = iw(&["dev", "wlan2", "station", "dump"]).map(|d| parse_stations(&d, "5G"));
             m.sta_2g = s2.as_ref().map(|s| s.len() as u32);
@@ -760,8 +788,21 @@ impl Collector {
                 .tick(&mut m.live, crate::pet::clock(), !self.proxy_open);
         }
         self.proxy_open = needs.proxy;
-        if n % 5 == 0 {
-            m.proxy = if m.mihomo.is_some() && (needs.net || n % 15 == 0) {
+        // HOME and NET show the mode, the connection count and the totals.
+        // The PROXY page reads all of that every second anyway; otherwise
+        // /connections (the whole list, hundreds of entries, for its length
+        // and two totals) is read every 10 s there and every 30 s elsewhere.
+        if needs.proxy && m.live.up {
+            if n % 5 == 0 {
+                m.proxy = Some(Proxy {
+                    mode: m.live.mode.clone(),
+                    connections: m.live.connections,
+                    down_total: m.live.down_total,
+                    up_total: m.live.up_total,
+                });
+            }
+        } else if n % 5 == 0 {
+            m.proxy = if m.mihomo.is_some() && n % if needs.net { 10 } else { 30 } == 0 {
                 crate::proxy::get("/configs").map(|configs| {
                     let conns = crate::proxy::get("/connections");
                     Proxy {
@@ -862,8 +903,9 @@ impl Collector {
         };
         if let (Some(ctxt), Some(intr)) = (field("ctxt "), field("intr ")) {
             if let Some((pc, pi)) = self.prev_ctxt {
-                m.ctxt_rate = ctxt.saturating_sub(pc) as f32;
-                m.intr_rate = intr.saturating_sub(pi) as f32;
+                let secs = self.rate_secs as f32;
+                m.ctxt_rate = ctxt.saturating_sub(pc) as f32 / secs;
+                m.intr_rate = intr.saturating_sub(pi) as f32 / secs;
             }
             self.prev_ctxt = Some((ctxt, intr));
         }
@@ -967,8 +1009,8 @@ impl Collector {
                 Some(Iface {
                     label,
                     up,
-                    rx_rate: rx.saturating_sub(prx) as f64,
-                    tx_rate: tx.saturating_sub(ptx) as f64,
+                    rx_rate: rx.saturating_sub(prx) as f64 / self.rate_secs,
+                    tx_rate: tx.saturating_sub(ptx) as f64 / self.rate_secs,
                 })
             })
             .collect();
