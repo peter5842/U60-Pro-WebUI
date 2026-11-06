@@ -71,13 +71,18 @@ Useful on-device facts:
   `start_ttl.sh`, `lan_transition.json`, `zte-agent.log`, the CSV logs, and deploy snapshots under
   `open-u60-transactions/`.
 - Agent logs: `/data/local/tmp/zte-agent.log`, plus `.1` for the previous
-  file. Each line carries device-local time and uptime; each file is capped at
+  file. Each line carries the kernel clock's time (UTC, see below) and uptime;
+  each file is capped at
   256 KiB; the log survives reboots. The agent writes this itself (`diag_log.rs`)
   because the stock busybox `syslogd -l 1` keeps only emergency messages and
   `logread` doesn't work here.
-- **The system clock holds local time labelled as UTC.** The firmware sets it
-  from the network (NITZ) with `TZ=UTC`, so epoch-based timestamps from the
-  device (CSV logs, `sampled_at_ms`) are ahead of true UTC by the local offset.
+- **The kernel clock is true UTC, except just after boot.** The firmware's NITZ
+  sync writes Beijing wall time into it as if it were UTC (8 h fast);
+  `scripts/device/net-time-guard.sh` steps it back to true UTC about 90 s after
+  boot and keeps it there, and the OS timezone is `CST-8` (`date` prints local
+  time). So epoch-based timestamps (agent log, CSV logs, `sampled_at_ms`) are
+  UTC, except those written in the first ~90 s after a boot, which run 8 h fast.
+  Without the guard (e.g. after FOTA) the whole uptime is 8 h fast.
 - **busybox gotchas:** `logread -f` and `dmesg -w` are broken. Read `/dev/kmsg` or
   `dmesg`. **Never read `/proc/kmsg`:** it blocks, and it consumes messages that
   other readers would otherwise get.

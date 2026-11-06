@@ -78,9 +78,9 @@ is a route below — `scripts/check-api-contract.py` enforces both directions
   stock busybox `syslogd` runs with `-l 1` (emergency only) and has no `logread`
   backend. The startup script sends the agent's output to `/dev/null`, and the
   agent redirects its own stdout/stderr at startup. Timestamps in this log and
-  in the CSV logs are device-local time without a `Z`. The firmware keeps local
-  time in the system clock with `TZ=UTC`, so epoch values from the device
-  differ from true UTC by the local offset.
+  in the CSV logs are the kernel clock's calendar time, without a `Z`: true UTC
+  once `net-time-guard.sh` has stepped the clock (about 90 s after boot), and
+  Beijing time from NITZ before that (see the clock note below).
 
 ## Safety constraints built into the agent
 

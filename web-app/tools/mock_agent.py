@@ -1712,6 +1712,16 @@ def put_port_rules(body):
 
 def post_port_rule_delete(body):
     obj = need_object(body, None)
+    # Validate before looking the rule up, in the agent's order (netsvc.rs
+    # port_rule_delete): a malformed request is a 400, not "no such rule".
+    unknown = sorted(set(obj) - {"kind", "id"})
+    if unknown:
+        raise ApiError(400, f"unknown field {unknown[0]}")
+    if obj.get("kind") not in ("forward", "mapping"):
+        raise ApiError(400, "kind must be forward or mapping")
+    rule_id = obj.get("id")
+    if not (isinstance(rule_id, str) and re.fullmatch(r"[0-9A-Za-z_]{1,40}", rule_id)):
+        raise ApiError(400, "id must be a rule id")
     n = STATE["netsvc"]
     before = len(n["rules"])
     n["rules"] = [r for r in n["rules"] if not (r["id"] == obj.get("id") and r["kind"] == obj.get("kind"))]
@@ -1752,6 +1762,13 @@ def put_dhcp_bindings(body):
 
 def post_dhcp_binding_delete(body):
     obj = need_object(body, None)
+    # The agent's order (netsvc.rs binding_delete): validate, then look up.
+    unknown = sorted(set(obj) - {"id"})
+    if unknown:
+        raise ApiError(400, f"unknown field {unknown[0]}")
+    binding_id = obj.get("id")
+    if not (isinstance(binding_id, str) and re.fullmatch(r"[0-9A-Za-z_]{1,40}", binding_id)):
+        raise ApiError(400, "id must be a binding id")
     n = STATE["netsvc"]
     before = len(n["bindings"])
     n["bindings"] = [b for b in n["bindings"] if b["id"] != obj.get("id")]
