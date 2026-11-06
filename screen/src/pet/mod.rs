@@ -58,6 +58,14 @@ const CHATTER_IDLE_MS: i64 = 45_000;
 const CHATTER_GAP_MS: i64 = 300_000;
 const DOZE_IDLE_MS: i64 = 60_000;
 const GREET_AWAY_S: u64 = 20 * 60;
+/// The model is asked only with at least this long before the screen sleeps;
+/// a reply that lands after dark is thrown away. Chatter needs more, since
+/// her line also has to be read.
+const AI_MIN_LEFT_MS: i64 = 15_000;
+const CHATTER_MIN_LEFT_MS: i64 = 30_000;
+/// How long she waits after the screen lights for the collector's first new
+/// sample before going on with what she has.
+const WAKE_STALE_MAX_MS: i64 = 5_000;
 
 const CD_BATTERY: usize = 0;
 const CD_HOT: usize = 1;
@@ -224,6 +232,17 @@ pub struct Pet {
     chosen: Option<(Place, Place)>,
     /// When the scene or its light last changed, for the dissolve.
     moved_at: i64,
+    /// HOME is on screen (not another page, not settings): set by the panel.
+    visible: bool,
+    /// Milliseconds until the screen sleeps for idleness: set by the panel.
+    awake_left_ms: i64,
+    /// Just lit: the model's uptime as the screen went dark, and when it lit.
+    /// The collector sleeps while dark, so until that changes the model
+    /// still holds the clock, battery and signal from before.
+    stale: Option<(u64, i64)>,
+    waking: bool,
+    /// The model config file's mtime, to pick up a new key without a restart.
+    config_mtime: Option<SystemTime>,
     backdrop: RefCell<Backdrop>,
     /// The previous background while it dissolves.
     fade: RefCell<Option<Vec<u16>>>,
@@ -264,9 +283,38 @@ impl Pet {
             light: Light::at(None),
             chosen: None,
             moved_at: i64::MIN / 2,
+            visible: true,
+            awake_left_ms: i64::MAX,
+            stale: None,
+            waking: false,
+            config_mtime: None,
             backdrop: RefCell::new(None),
             fade: RefCell::new(None),
         }
+    }
+
+    fn config_mtime() -> Option<SystemTime> {
+        fs::metadata(brain::CONFIG_PATH)
+            .and_then(|m| m.modified())
+            .ok()
+    }
+
+    /// Take a new model config (a new key, say) once its file changes, between
+    /// calls. A session used to keep the one it started with.
+    fn reload_config(&mut self) {
+        let mtime = Pet::config_mtime();
+        if mtime == self.config_mtime || self.brain.busy() || self.thinking.is_some() {
+            return;
+        }
+        self.config_mtime = mtime;
+        self.brain = Client::new(Config::load(Path::new(brain::CONFIG_PATH)));
+    }
+
+    /// Where she is shown and how long the screen stays lit. Call before
+    /// each `tick`: she talks to the model only where she can be seen.
+    pub fn set_view(&mut self, visible: bool, awake_left_ms: i64) {
+        self.visible = visible;
+        self.awake_left_ms = awake_left_ms;
     }
 
     /// Her model config, and when she last saw you, from /data.
@@ -277,6 +325,7 @@ impl Pet {
             .and_then(|s| serde_json::from_str::<Value>(&s).ok())
             .and_then(|v| v.get("seen").and_then(Value::as_u64));
         let mut pet = Pet::new(Client::new(config), clock(), wall() ^ 0x9e37_79b9_7f4a_7c15);
+        pet.config_mtime = Pet::config_mtime();
         pet.pending = match seen {
             None => Some(Trigger::Greet(None)),
             Some(s) => {
@@ -452,7 +501,8 @@ impl Pet {
         let ask = match c.ask {
             Ask::Always => true,
             Ask::Sometimes => self.now - self.last_ai >= TAP_AI_GAP_MS,
-        };
+        } && self.awake_left_ms > AI_MIN_LEFT_MS
+            && (m.wan_ip.is_some() || m.wan6_up == Some(true));
         if ask && self.brain.ready(self.now) {
             let msg = self.prompt(&c.event, m);
             if let Some(id) = self.brain.ask(self.now, msg) {
@@ -661,6 +711,7 @@ impl Pet {
     /// The screen lit again: greet after a long absence, doze at night.
     pub fn on_wake(&mut self) {
         self.now = clock().max(self.now);
+        self.waking = true;
         let away = (self.now - self.last_touch).max(0) as u64 / 1000;
         self.last_touch = self.now;
         self.looked = false;
@@ -701,6 +752,17 @@ impl Pet {
     pub fn tick(&mut self, now: i64, m: &Model) {
         let dt = (now - self.now).clamp(0, 250) as f32 / 1000.0;
         self.now = now;
+        if std::mem::take(&mut self.waking) {
+            self.stale = Some((m.uptime_s, now));
+        }
+        if let Some((uptime, lit)) = self.stale {
+            if m.uptime_s == uptime && now - lit < WAKE_STALE_MAX_MS {
+                // Greeting, doze check and remarks wait for a fresh sample.
+                self.animate(dt);
+                return;
+            }
+            self.stale = None;
+        }
         let knew = self.hour.is_some();
         if let Some(h) = lines::hour(m) {
             self.hour = Some(h);
@@ -716,11 +778,13 @@ impl Pet {
         }
         if now >= self.next_watch {
             self.next_watch = now + 10_000;
+            self.reload_config();
             self.watch(m);
             self.routine(m);
         }
         self.poll_brain();
-        if self.pending.is_some() && self.hour.is_some() && self.quiet() {
+        // The greeting waits until HOME is on screen.
+        if self.pending.is_some() && self.hour.is_some() && self.quiet() && self.visible {
             if let Some(t) = self.pending.take() {
                 self.react(t, m);
             }
@@ -745,7 +809,7 @@ impl Pet {
         self.go(place, light);
         if changed && !knew {
             self.moved_at = i64::MIN / 2;
-        } else if moved && self.quiet() {
+        } else if moved && self.quiet() && self.visible {
             self.react(Trigger::Travel(place), m);
         }
     }
@@ -811,7 +875,7 @@ impl Pet {
             }
         }
         if let Some(t) = fire {
-            if self.quiet() {
+            if self.quiet() && self.visible {
                 self.react(t, m);
             }
         }
@@ -831,6 +895,8 @@ impl Pet {
             return;
         }
         if self.quiet()
+            && self.visible
+            && self.awake_left_ms > CHATTER_MIN_LEFT_MS
             && idle > CHATTER_IDLE_MS
             && self.now - self.last_chatter > CHATTER_GAP_MS
             && self.now - self.last_ai > 60_000
@@ -1059,6 +1125,90 @@ mod tests {
         let (x, y, w, h) = p.bubble_rect().unwrap();
         assert!(x + w <= STAGE_X + STAGE_W - 2, "{x}+{w}");
         assert!(y >= STAGE_Y + TITLE_H && y + h <= STAGE_Y + STAGE_H);
+    }
+
+    #[test]
+    fn after_waking_she_waits_for_a_fresh_sample() {
+        let before = Model {
+            clock: "22:50:00".into(),
+            uptime_s: 100,
+            ..Model::default()
+        };
+        let mut p = pet();
+        p.tick(p.now + 50, &before);
+        p.speech = None;
+        p.pending = None;
+        p.on_dark();
+        p.last_touch = p.now - (GREET_AWAY_S as i64 + 60) * 1000;
+        p.on_wake();
+        assert!(p.pending.is_some());
+        // Same sample as before dark: nothing but animation.
+        p.tick(p.now + 50, &before);
+        assert!(p.pending.is_some() && !p.dozing && p.speech.is_none());
+        // The collector's first new sample says it is 03:00 now.
+        let after = Model {
+            clock: "03:00:00".into(),
+            uptime_s: 4000,
+            ..Model::default()
+        };
+        p.tick(p.now + 50, &after);
+        assert!(p.dozing, "the doze check used the fresh hour");
+        assert!(p.pending.is_none());
+    }
+
+    #[test]
+    fn a_stuck_collector_does_not_hold_her_forever() {
+        let m = Model {
+            clock: "12:00:00".into(),
+            uptime_s: 100,
+            ..Model::default()
+        };
+        let mut p = pet();
+        p.on_wake();
+        p.pending = Some(Trigger::Greet(Some(5000)));
+        p.tick(p.now + 50, &m);
+        assert!(p.pending.is_some());
+        p.tick(p.now + WAKE_STALE_MAX_MS + 10, &m);
+        assert!(p.pending.is_none() && p.speech.is_some());
+    }
+
+    #[test]
+    fn she_keeps_the_greeting_until_home_is_shown() {
+        let m = Model {
+            clock: "12:00:00".into(),
+            ..Model::default()
+        };
+        let mut p = pet();
+        p.pending = Some(Trigger::Greet(Some(5000)));
+        p.set_view(false, i64::MAX);
+        p.tick(p.now + 50, &m);
+        assert!(p.pending.is_some() && p.speech.is_none());
+        p.set_view(true, i64::MAX);
+        p.tick(p.now + 50, &m);
+        assert!(p.pending.is_none() && p.speech.is_some());
+    }
+
+    #[test]
+    fn she_does_not_start_chatter_just_before_the_screen_sleeps() {
+        let m = Model {
+            clock: "12:00:00".into(),
+            ..Model::default()
+        };
+        let mut p = pet();
+        p.tick(p.now + 50, &m);
+        p.speech = None;
+        p.pending = None;
+        p.last_touch = p.now - CHATTER_IDLE_MS - 1;
+        p.last_chatter = p.now - CHATTER_GAP_MS - 1;
+        p.set_view(true, CHATTER_MIN_LEFT_MS - 1);
+        p.routine(&m);
+        assert!(p.speech.is_none());
+        p.set_view(false, i64::MAX);
+        p.routine(&m);
+        assert!(p.speech.is_none(), "not while another page is shown");
+        p.set_view(true, i64::MAX);
+        p.routine(&m);
+        assert!(p.speech.is_some());
     }
 
     #[test]

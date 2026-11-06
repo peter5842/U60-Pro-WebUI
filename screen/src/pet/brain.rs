@@ -20,6 +20,20 @@ pub const CONFIG_PATH: &str = "/data/local/tmp/zte-pet.json";
 const CURL_CONFIG: &str = "/tmp/zte-screen/pet.curl";
 /// Never two requests closer than this.
 const MIN_GAP_MS: i64 = 3000;
+/// After a failed call the next waits 30 s, doubling per failure in a row up
+/// to 30 min, so a dead endpoint or an expired key is not hit every few
+/// seconds (each failure also costs a line in panel.log).
+const BACKOFF_FIRST_MS: i64 = 30_000;
+const BACKOFF_MAX_MS: i64 = 30 * 60_000;
+
+fn backoff_ms(failures: u32) -> i64 {
+    if failures == 0 {
+        return 0;
+    }
+    BACKOFF_FIRST_MS
+        .saturating_mul(1i64 << (failures - 1).min(16))
+        .min(BACKOFF_MAX_MS)
+}
 const TIMEOUT_S: u64 = 25;
 /// Longest line kept from a reply, in characters.
 pub const MAX_LINE: usize = 48;
@@ -257,6 +271,9 @@ pub struct Client {
     last: i64,
     pending: Option<u64>,
     next_id: u64,
+    /// Failed calls in a row, and when the next may go out because of them.
+    failures: u32,
+    retry_at: i64,
     pub last_error: Option<String>,
 }
 
@@ -270,6 +287,8 @@ impl Client {
             last: i64::MIN / 2,
             pending: None,
             next_id: 1,
+            failures: 0,
+            retry_at: i64::MIN / 2,
             last_error: None,
         }
     }
@@ -290,7 +309,8 @@ impl Client {
         self.pending.is_some()
     }
 
-    /// Whether a request may go out now (configured, idle, within budget).
+    /// Whether a request may go out now (configured, idle, within budget, not
+    /// backing off after failures).
     pub fn ready(&mut self, now: i64) -> bool {
         let Some(cfg) = &self.config else {
             return false;
@@ -298,7 +318,10 @@ impl Client {
         while self.calls.front().is_some_and(|t| now - t > 3_600_000) {
             self.calls.pop_front();
         }
-        self.pending.is_none() && now - self.last >= MIN_GAP_MS && self.calls.len() < cfg.per_hour
+        self.pending.is_none()
+            && now - self.last >= MIN_GAP_MS
+            && now >= self.retry_at
+            && self.calls.len() < cfg.per_hour
     }
 
     /// Queue one request; returns its id.
@@ -338,8 +361,16 @@ impl Client {
                     self.pending = None;
                 }
                 match &reply.line {
-                    Ok(_) => self.last_error = None,
-                    Err(e) => self.last_error = Some(e.clone()),
+                    Ok(_) => {
+                        self.last_error = None;
+                        self.failures = 0;
+                        self.retry_at = i64::MIN / 2;
+                    }
+                    Err(e) => {
+                        self.last_error = Some(e.clone());
+                        self.failures = self.failures.saturating_add(1);
+                        self.retry_at = self.last + backoff_ms(self.failures);
+                    }
                 }
                 Some(reply)
             }
@@ -411,6 +442,50 @@ mod tests {
         assert_eq!(parse_line("  "), None);
         let long = "啊".repeat(100);
         assert_eq!(parse_line(&long).unwrap().0.chars().count(), MAX_LINE);
+    }
+
+    #[test]
+    fn failures_back_off_and_success_resets() {
+        assert_eq!(backoff_ms(0), 0);
+        assert_eq!(backoff_ms(1), 30_000);
+        assert_eq!(backoff_ms(2), 60_000);
+        assert_eq!(backoff_ms(7), 30 * 60_000);
+        assert_eq!(backoff_ms(40), 30 * 60_000);
+
+        let mut c = Client::new(Config::from_json(&cfg()));
+        let (tx, rx) = mpsc::channel();
+        c.rx = Some(rx);
+        c.last = 100_000;
+        c.pending = Some(1);
+        tx.send(Reply {
+            id: 1,
+            line: Err("HTTP 502".into()),
+        })
+        .unwrap();
+        assert!(c.poll().is_some());
+        assert!(!c.ready(100_000 + 29_000));
+        assert!(c.ready(100_000 + 30_000));
+        c.last = 200_000;
+        c.pending = Some(2);
+        tx.send(Reply {
+            id: 2,
+            line: Err("timeout".into()),
+        })
+        .unwrap();
+        c.poll();
+        assert!(
+            !c.ready(200_000 + 59_000),
+            "a second failure waits twice as long"
+        );
+        c.last = 300_000;
+        c.pending = Some(3);
+        tx.send(Reply {
+            id: 3,
+            line: Ok(("嗨".into(), "happy".into())),
+        })
+        .unwrap();
+        c.poll();
+        assert!(c.ready(300_000 + MIN_GAP_MS));
     }
 
     #[test]

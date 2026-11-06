@@ -225,6 +225,8 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
                 }
             }
             if awake {
+                ui.pet
+                    .set_view(ui.page == Page::Home && !ui.settings_open, left);
                 ui.pet.tick(crate::pet::clock(), &m);
             }
         }
