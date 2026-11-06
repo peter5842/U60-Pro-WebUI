@@ -77,6 +77,20 @@ it again on every exit path; it never disables it and never runs from a boot
 hook. Do not reuse this for any other barrier daemon. The guards and the
 community verification it rests on are in [SCREEN.md](SCREEN.md#safety-model).
 
+**Second exception, device-side only: restarting `zte_smart_manage`.** ZTE's
+app-recognition / QoS / parental-control daemon leaks memory with traffic
+(measured 1.5–8 MB/h; 600 MB+ after a few days before the guard existed).
+[`scripts/device/smart-manage-guard.sh`](../scripts/device/smart-manage-guard.sh)
+is started from `/etc/rc.local` as `/data/local/tmp/smart_manage_guard.sh`
+(installed by hand since 2026-10-10; the repo copy is byte-identical). Every
+10 minutes, and never in the first 10 minutes of a process's life, it runs
+`/etc/init.d/zte_smart_manage restart` once RSS passes 256 MB. That is a
+procd **restart**, long after the boot barrier, so the daemon is back and
+registered within seconds; it is never stopped, disabled or killed, and the
+agent does not touch it. The daemon hooks traffic only through mangle chains
+that filter and mark (no NFQUEUE), so a restart does not stall forwarding. Do
+not extend this to other barrier daemons.
+
 ### Overlay whiteouts
 
 `/etc/init.d/<name> disable` creates **whiteout character devices** in

@@ -221,6 +221,26 @@ ssh -p 2222 root@192.168.0.1 'sh /data/local/tmp/start_dashboard.sh; cat /tmp/da
 ./deploy-dashboard.sh    # dashboard
 ```
 
+### Device-side guards (installed by hand)
+
+Two background shell loops run on the device outside the agent. The deploy
+scripts do not install them; copy them to `/data/local/tmp/` and start each from
+its own `/etc/rc.local` line, ahead of `exit 0` (run `sh -n /etc/rc.local`
+afterwards):
+
+| Repo file | On the device | rc.local line |
+|---|---|---|
+| `scripts/device/net-time-guard.sh` | `/data/local/tmp/net_time_guard.sh` | `sh /data/local/tmp/net_time_guard.sh >/dev/null 2>&1 &` |
+| `scripts/device/smart-manage-guard.sh` | `/data/local/tmp/smart_manage_guard.sh` | `sh /data/local/tmp/smart_manage_guard.sh >/dev/null 2>&1 &` |
+
+`net-time-guard` keeps the LAN IPv6 relay and the kernel clock in place
+([AGENT.md](AGENT.md)); `smart-manage-guard` restarts the leaking
+`zte_smart_manage` past 256 MB RSS ([SAFETY.md](SAFETY.md)). They log to
+`/tmp/net_time_guard.log` and `/tmp/smart_manage_guard.log`. Like the other
+rc.local lines, both are lost on FOTA. A running loop keeps the old script
+until it is restarted, so after copying a new version stop the old process
+and start the new one (or reboot).
+
 ---
 
 ## Design rule: shell/ssh/adb only — no boot hooks outside rc.local
