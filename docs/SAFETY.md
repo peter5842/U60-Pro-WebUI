@@ -91,6 +91,22 @@ agent does not touch it. The daemon hooks traffic only through mangle chains
 that filter and mark (no NFQUEUE), so a restart does not stall forwarding. Do
 not extend this to other barrier daemons.
 
+**Its DPI is off on the owner's device (2026-11-06, at the owner's request).**
+This is the one system-service uci change made on purpose:
+`zwrt_smart_mng.smart_mng.xdpi_support=0`, then the same procd restart. The
+daemon keeps running and registers `zwrt_smart_mng.api`/`.msg` as before; it
+just stops feeding app recognition to itself, which is what leaked. Measured
+right after: its CPU went from about 12 % of one core to 0, its RSS stayed at
+5 MB instead of growing, and the whole system went from about 24 % to 13 %
+busy. Lost with it: ZTE's app recognition, per-app parental controls and game
+acceleration, none of which this setup uses. The `xdpi.ko` module loaded at
+boot stays loaded until the next reboot (it is not unloaded by hand). The
+guard stays as a backstop. To undo: copy
+`/data/local/tmp/zwrt_smart_mng.bak-20261106` back to
+`/etc/config/zwrt_smart_mng` (or set `xdpi_support=1` and `uci commit`), then
+`/etc/init.d/zte_smart_manage restart`. `/etc` is wiped by FOTA, which turns
+DPI back on.
+
 ### Overlay whiteouts
 
 `/etc/init.d/<name> disable` creates **whiteout character devices** in
