@@ -27,6 +27,49 @@ etc/rc.local
 etc/dropbear
 data/dropbear
 etc/config/uhttpd'
+# Finished (committed or restored) snapshots kept after a completed deployment.
+keep_snapshots=5
+
+# The release id a dashboard pointer names: the last component of its target.
+release_id() {
+    target=$(readlink "$1") || return 0
+    target=${target%/}
+    printf '%s' "${target##*/}"
+}
+
+# Older finished snapshots only take space (each holds a full copy of the
+# agent, the SSH binaries and the startup scripts). Keep the newest few, never
+# a pending one or this transaction. Then drop dashboard releases that neither
+# the live pointer nor a kept snapshot points at, so every kept snapshot can
+# still restore its dashboard. Called after the lock is released, in a
+# subshell, so nothing here can fail a deployment that is already committed.
+prune() {
+    ls -1t "$base"/*/state 2>/dev/null | {
+        kept=0
+        while IFS= read -r state; do
+            snapshot=${state%/state}
+            case "$(cat "$state" 2>/dev/null)" in committed|restored) ;; *) continue ;; esac
+            kept=$((kept + 1))
+            if [ "$kept" -le "$keep_snapshots" ] || [ "$snapshot" = "$transaction" ]; then continue; fi
+            rm -rf "$snapshot"
+        done
+    }
+    live="$root/data/www.current"
+    releases="$root/data/open-u60-dashboards"
+    # Without a pointer into the release directory the layout is unknown.
+    [ -L "$live" ] && [ -d "$releases" ] || return 0
+    live_id=$(release_id "$live")
+    [ -n "$live_id" ] && [ -d "$releases/$live_id" ] || return 0
+    referenced=" $live_id "
+    for link in "$base"/*/before/data_www.current; do
+        if [ -L "$link" ]; then referenced="$referenced$(release_id "$link") "; fi
+    done
+    for release in "$releases"/*; do
+        [ -d "$release" ] || continue
+        case "$referenced" in *" ${release##*/} "*) continue ;; esac
+        rm -rf "$release"
+    done
+}
 
 case "$action" in
 begin)
@@ -130,6 +173,10 @@ restore|complete)
     rm -f "$base/lock/owner"
     rmdir "$base/lock"
     sync
+    if [ "$action" = complete ]; then
+        ( prune ) >/dev/null 2>&1 || true
+        sync
+    fi
     ;;
 *) exit 64 ;;
 esac

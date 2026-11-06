@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,6 +124,84 @@ class Transactions(unittest.TestCase):
         self.action('restore')
         self.assertEqual((self.root / 'data/www.current/index.html').read_text(), 'old UI')
         self.assertEqual((self.root / 'data/releases/new/index.html').read_text(), 'new UI')
+
+    def old_snapshot(self, name, state, age, dashboard=None):
+        """A finished or pending snapshot left by an earlier deployment."""
+        snapshot = self.root / 'data/local/tmp/open-u60-transactions' / name
+        (snapshot / 'before').mkdir(parents=True)
+        (snapshot / 'identity').write_text('aabb\n')
+        (snapshot / 'state').write_text(f'{state}\n')
+        if dashboard:
+            os.symlink(self.root / 'data/open-u60-dashboards' / dashboard, snapshot / 'before/data_www.current')
+        stamp = time.time() - age
+        os.utime(snapshot / 'state', (stamp, stamp))
+        return snapshot
+
+    def release(self, name):
+        self.write(f'data/open-u60-dashboards/{name}/index.html', name)
+        return self.root / 'data/open-u60-dashboards' / name
+
+    def point_dashboard_at(self, name):
+        live = self.root / 'data/www.current'
+        if live.is_symlink(): live.unlink()
+        os.symlink(self.root / 'data/open-u60-dashboards' / name, live)
+
+    def test_complete_keeps_only_the_newest_finished_snapshots(self):
+        old = [self.old_snapshot(f'old-{i}', 'restored' if i == 3 else 'committed', age=1000 * (i + 1)) for i in range(7)]
+        pending = self.old_snapshot('pending-0', 'pending', age=99999)
+        self.action('begin')
+        self.action('complete')
+        base = self.root / 'data/local/tmp/open-u60-transactions'
+        # This deployment plus the four newest earlier ones; pending is never pruned.
+        self.assertTrue((base / 'test-123').is_dir())
+        self.assertEqual([s.exists() for s in old], [True] * 4 + [False] * 3)
+        self.assertTrue(pending.is_dir())
+        self.assertFalse((base / 'lock').exists())
+        self.assertFalse((base / 'active').exists())
+
+    def test_restore_prunes_nothing(self):
+        old = [self.old_snapshot(f'old-{i}', 'committed', age=1000 * (i + 1)) for i in range(7)]
+        self.action('begin')
+        self.action('restore')
+        self.assertTrue(all(s.exists() for s in old))
+
+    def test_complete_drops_dashboard_releases_no_snapshot_can_restore(self):
+        for name in ['r-kept-by-old', 'r-before', 'r-new', 'r-orphan', 'r-of-pruned']:
+            self.release(name)
+        self.old_snapshot('old-kept', 'committed', age=10, dashboard='r-kept-by-old')
+        for i in range(5):
+            self.old_snapshot(f'old-gone-{i}', 'committed', age=100 + i, dashboard='r-of-pruned' if i == 4 else None)
+        self.point_dashboard_at('r-before')
+        self.action('begin')
+        self.point_dashboard_at('r-new')
+        self.action('complete')
+        releases = self.root / 'data/open-u60-dashboards'
+        self.assertEqual(sorted(p.name for p in releases.iterdir()), ['r-before', 'r-kept-by-old', 'r-new'])
+        # The kept snapshot of this deployment still restores its dashboard.
+        self.action('restore')
+        self.assertEqual((self.root / 'data/www.current/index.html').read_text(), 'r-before')
+
+    def test_dashboard_pruning_needs_a_live_release_pointer(self):
+        self.release('r-a'); self.release('r-b')
+        self.write('data/www.current/index.html', 'a plain directory')
+        self.action('begin')
+        self.action('complete')
+        self.assertTrue((self.root / 'data/open-u60-dashboards/r-a').is_dir())
+        self.assertTrue((self.root / 'data/open-u60-dashboards/r-b').is_dir())
+
+    def test_failed_pruning_never_fails_a_committed_deployment(self):
+        self.release('r-live'); self.release('r-stuck')
+        self.point_dashboard_at('r-live')
+        releases = self.root / 'data/open-u60-dashboards'
+        self.action('begin')
+        releases.chmod(0o500)  # nothing below can be removed
+        try:
+            self.action('complete')
+        finally:
+            releases.chmod(0o700)
+        self.assertTrue((releases / 'r-stuck').is_dir())
+        state = self.root / 'data/local/tmp/open-u60-transactions/test-123/state'
+        self.assertEqual(state.read_text(), 'committed\n')
 
 
 class TerminalDeployment(unittest.TestCase):

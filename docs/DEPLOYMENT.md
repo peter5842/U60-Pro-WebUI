@@ -160,8 +160,13 @@ Each deployment checks space for the new files and rollback copies, and creates
 a private snapshot under `/data/local/tmp/open-u60-transactions/<id>`. Failure
 attempts to restore the snapshot. The console prints the exact recovery command
 for use on the same modem if automatic recovery loses its connection. Successful
-snapshots remain available; save needed recovery data before removing old ones.
-A pending transaction blocks another deployment. Original encrypted unlock
+snapshots remain available, but each completed deployment keeps only the five
+newest finished (committed or restored) ones; a pending snapshot is never
+removed. It then removes dashboard releases under `/data/open-u60-dashboards`
+that neither `/data/www.current` nor a kept snapshot points at, so every kept
+snapshot can still restore its dashboard. Copy an older snapshot off the modem
+before deploying if you want to keep it. Pruning runs after the deployment is
+committed and cannot fail it. A pending transaction blocks another deployment. Original encrypted unlock
 backups remain in `~/.local/share/open-u60-pro/recovery` for the terminal flow.
 
 Setup now includes SSH hardening and the dashboard server. Installing the web
