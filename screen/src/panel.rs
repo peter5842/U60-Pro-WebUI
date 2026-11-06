@@ -24,6 +24,7 @@ const NEED_NET: u8 = 1;
 const NEED_PROXY: u8 = 2;
 const NEED_LAN: u8 = 4;
 const NEED_WIFI: u8 = 8;
+const NEED_PROXY_TRAFFIC: u8 = 16;
 
 fn mtime(p: &Path) -> Option<SystemTime> {
     fs::metadata(p).and_then(|m| m.modified()).ok()
@@ -51,6 +52,7 @@ fn collector(shared: Arc<Shared>) {
                     lan: needs & NEED_LAN != 0,
                     proxy: needs & NEED_PROXY != 0,
                     wifi: needs & NEED_WIFI != 0,
+                    proxy_traffic: needs & NEED_PROXY_TRAFFIC != 0,
                 },
             );
             *shared.model.lock().unwrap_or_else(|e| e.into_inner()) = local.clone();
@@ -242,6 +244,7 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
                 Page::Home => NEED_NET,
                 Page::Net => NEED_NET | NEED_WIFI,
                 Page::Lan => NEED_LAN | NEED_WIFI,
+                Page::Proxy if ui.proxy.shows_traffic() => NEED_PROXY | NEED_PROXY_TRAFFIC,
                 Page::Proxy => NEED_PROXY,
                 _ => 0,
             },

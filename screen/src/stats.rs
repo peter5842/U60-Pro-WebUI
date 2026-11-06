@@ -656,6 +656,8 @@ pub struct Needs {
     pub proxy: bool,
     /// Wi-Fi station counts are on screen (NET, LAN).
     pub wifi: bool,
+    /// The PROXY screen shown draws traffic rates or the connection list.
+    pub proxy_traffic: bool,
 }
 
 impl Collector {
@@ -784,8 +786,12 @@ impl Collector {
             }
         }
         if needs.proxy {
-            self.proxy
-                .tick(&mut m.live, crate::pet::clock(), !self.proxy_open);
+            self.proxy.tick(
+                &mut m.live,
+                crate::pet::clock(),
+                !self.proxy_open,
+                needs.proxy_traffic,
+            );
         }
         self.proxy_open = needs.proxy;
         // HOME and NET show the mode, the connection count and the totals.

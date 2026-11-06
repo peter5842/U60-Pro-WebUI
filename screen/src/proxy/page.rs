@@ -430,6 +430,12 @@ impl View {
         }
     }
 
+    /// The screen shown draws the traffic rates or the connection list, so
+    /// connections are read every second (otherwise every 5 s).
+    pub fn shows_traffic(&self) -> bool {
+        matches!(self.screen, Screen::Main | Screen::Conns)
+    }
+
     fn go(&mut self, screen: Screen) {
         if screen == Screen::Subs {
             self.jobs.forget_subs();

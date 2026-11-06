@@ -228,7 +228,8 @@ pub fn parse_proxies(v: &Value) -> (Vec<Group>, HashMap<String, u32>, String) {
     (groups, delays, global_now)
 }
 
-fn conn_of(c: &Value) -> (String, Conn, u64, u64) {
+/// The text of one connection (rates are filled in by the poller).
+fn conn_of(c: &Value) -> Conn {
     let md = &c["metadata"];
     let text = |v: &Value| v.as_str().unwrap_or("").to_string();
     let host = [&md["host"], &md["sniffHost"]]
@@ -252,23 +253,19 @@ fn conn_of(c: &Value) -> (String, Conn, u64, u64) {
     } else {
         format!("{}({payload})", text(&c["rule"]))
     };
-    (
-        text(&c["id"]),
-        Conn {
-            host,
-            node: chains.first().cloned().unwrap_or_default(),
-            group: chains.last().cloned().unwrap_or_default(),
-            rule,
-            ..Conn::default()
-        },
-        c["download"].as_u64().unwrap_or(0),
-        c["upload"].as_u64().unwrap_or(0),
-    )
+    Conn {
+        host,
+        node: chains.first().cloned().unwrap_or_default(),
+        group: chains.last().cloned().unwrap_or_default(),
+        rule,
+        ..Conn::default()
+    }
 }
 
-/// Reads mihomo for the page once a second: connections and traffic every
-/// time, groups every few seconds or right after a change, the mode now and
-/// then.
+/// Reads mihomo for the page: connections and traffic once a second while
+/// the overview or the connection list is shown (every 5 s on the group and
+/// subscription screens, which show neither), groups every few seconds or
+/// right after a change, the mode now and then.
 #[derive(Default)]
 pub struct Poller {
     n: u64,
@@ -277,10 +274,18 @@ pub struct Poller {
 }
 
 impl Poller {
-    /// `fresh`: the page just opened, so read everything now.
-    pub fn tick(&mut self, live: &mut Live, now_ms: i64, fresh: bool) {
+    /// `fresh`: the page just opened, so read everything now. `traffic`: the
+    /// screen shown draws the rates or the connection list.
+    pub fn tick(&mut self, live: &mut Live, now_ms: i64, fresh: bool, traffic: bool) {
         let n = self.n;
         self.n += 1;
+        if fresh || traffic || n % 5 == 0 {
+            self.connections(live, now_ms);
+        }
+        self.config(live, n, fresh);
+    }
+
+    fn connections(&mut self, live: &mut Live, now_ms: i64) {
         let Some(c) = get("/connections") else {
             live.up = false;
             live.conns.clear();
@@ -304,23 +309,42 @@ impl Poller {
         }
         self.totals = Some((down, up, now_ms));
         (live.down_total, live.up_total) = (down, up);
-        let mut seen = HashMap::new();
-        let mut conns = Vec::new();
-        for raw in c["connections"].as_array().into_iter().flatten() {
-            let (id, mut conn, d, u) = conn_of(raw);
-            if let (Some(dt), Some((d0, u0))) = (dt, self.seen.get(&id)) {
-                conn.down_rate = d.saturating_sub(*d0) as f64 / dt;
-                conn.up_rate = u.saturating_sub(*u0) as f64 / dt;
-            }
-            seen.insert(id, (d, u));
-            conns.push(conn);
+        // Rates for every connection, but text only for the 40 shown: the
+        // list can hold hundreds.
+        let raws: Vec<&Value> = c["connections"].as_array().into_iter().flatten().collect();
+        let mut seen = HashMap::with_capacity(raws.len());
+        let mut ranked: Vec<(f64, f64, &Value)> = Vec::with_capacity(raws.len());
+        for raw in raws {
+            let id = raw["id"].as_str().unwrap_or("");
+            let (d, u) = (
+                raw["download"].as_u64().unwrap_or(0),
+                raw["upload"].as_u64().unwrap_or(0),
+            );
+            let (down_rate, up_rate) = match (dt, self.seen.get(id)) {
+                (Some(dt), Some((d0, u0))) => (
+                    d.saturating_sub(*d0) as f64 / dt,
+                    u.saturating_sub(*u0) as f64 / dt,
+                ),
+                _ => (0.0, 0.0),
+            };
+            seen.insert(id.to_string(), (d, u));
+            ranked.push((down_rate, up_rate, raw));
         }
         self.seen = seen;
-        live.connections = conns.len();
-        conns.sort_by(|a, b| (b.down_rate + b.up_rate).total_cmp(&(a.down_rate + a.up_rate)));
-        conns.truncate(40);
-        live.conns = conns;
+        live.connections = ranked.len();
+        ranked.sort_by(|a, b| (b.0 + b.1).total_cmp(&(a.0 + a.1)));
+        live.conns = ranked
+            .into_iter()
+            .take(40)
+            .map(|(down_rate, up_rate, raw)| Conn {
+                down_rate,
+                up_rate,
+                ..conn_of(raw)
+            })
+            .collect();
+    }
 
+    fn config(&mut self, live: &mut Live, n: u64, fresh: bool) {
         if fresh || n % 3 == 0 || REFRESH.swap(false, Ordering::SeqCst) {
             if let Some(p) = get("/proxies") {
                 (live.groups, live.delays, live.global_now) = parse_proxies(&p);
@@ -378,16 +402,15 @@ mod tests {
 
     #[test]
     fn connections_name_host_node_group_and_rule() {
-        let (id, c, d, u) = conn_of(&json!({
+        let c = conn_of(&json!({
             "id": "a", "download": 10, "upload": 4,
             "metadata": {"host": "", "sniffHost": "api.example.com", "destinationIP": "1.2.3.4", "destinationPort": "443"},
             "chains": ["HK-1", "香港节点", "节点选择"], "rule": "RuleSet", "rulePayload": "proxy"
         }));
-        assert_eq!((id.as_str(), d, u), ("a", 10, 4));
         assert_eq!(c.host, "api.example.com");
         assert_eq!((c.node.as_str(), c.group.as_str()), ("HK-1", "节点选择"));
         assert_eq!(c.rule, "RuleSet(proxy)");
-        let (_, c, _, _) = conn_of(
+        let c = conn_of(
             &json!({"metadata": {"destinationIP": "1.2.3.4", "destinationPort": "53"}, "chains": ["DIRECT"], "rule": "Match"}),
         );
         assert_eq!((c.host.as_str(), c.rule.as_str()), ("1.2.3.4:53", "Match"));
