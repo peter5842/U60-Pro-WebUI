@@ -959,7 +959,11 @@ impl Pet {
             .retain(|p| now - p.born < p.life && Pet::inside(p.x, p.y));
     }
 
-    /// Redraw interval: smooth while something moves, slower at rest.
+    /// Redraw interval: smooth while something moves, slower at rest. These
+    /// are the intervals the device has always shown: the panel loop used to
+    /// wake on a 40 ms tick, which stretched the old 66/83/125 ms to 80/120/
+    /// 160 ms. Now that it wakes on time, the old values would draw 20–30%
+    /// more frames than anyone saw, for no visible gain.
     pub fn frame_ms(&self) -> i64 {
         let now = self.now;
         let lively = self.thinking.is_some()
@@ -970,14 +974,14 @@ impl Pet {
             || (self.x - self.target_x).abs() > 0.5
             || !self.particles.is_empty();
         if now - self.moved_at < draw::FADE_MS || lively {
-            66
+            80
         } else if self.place == Place::Train && !self.dozing {
             // The view from the window has to scroll smoothly.
-            83
+            120
         } else if self.dozing {
             200
         } else {
-            125
+            160
         }
     }
 

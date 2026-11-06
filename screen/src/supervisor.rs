@@ -365,7 +365,22 @@ fn takeover(limit: Option<u64>) -> i32 {
             kill_child(&mut child);
             break None;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        // Wait for the next heartbeat (about one a second) instead of waking
+        // every 100 ms. A stop signal interrupts poll() (EINTR), and the
+        // panel exiting closes the pipe (POLLHUP); the heartbeat timeout is
+        // checked at least once a second.
+        let mut pfd = libc::pollfd {
+            fd: out.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: polling one fd we own.
+        let r = unsafe { libc::poll(&mut pfd, 1, 1000) };
+        if r > 0 && pfd.revents & libc::POLLIN == 0 {
+            // Hang-up or error with nothing to read: the panel is going away.
+            // Pace the wait for its exit status as before.
+            std::thread::sleep(Duration::from_millis(100));
+        }
     };
     let _ = fs::remove_file(path("child"));
     match status {

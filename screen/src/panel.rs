@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime};
 use crate::canvas::Canvas;
 use crate::drm::Display;
 use crate::input::dev::{now_ms, open_power_key, open_touch, read_events};
-use crate::input::{Gesture, PowerKey, Press, Touch};
+use crate::input::{poll_timeout, Gesture, PowerKey, Press, Touch};
 use crate::settings::{IdleAction, Settings, PATH as SETTINGS_PATH};
 use crate::stats::{Collector, Model, Needs};
 use crate::supervisor::{self, write_backlight, RUNDIR};
@@ -128,6 +128,8 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
     let mut exit = false;
     let mut next_frame = 0i64;
     let mut was_awake = true;
+    // What the panel shows now, so an unchanged frame is not committed again.
+    let mut shown: Vec<u16> = Vec::new();
 
     let result = loop {
         let now = now_ms();
@@ -222,6 +224,8 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
             let m = shared.model.lock().unwrap_or_else(|e| e.into_inner());
             if awake != was_awake {
                 was_awake = awake;
+                // Always commit the first frame after a change of state.
+                shown.clear();
                 if awake {
                     ui.pet.on_wake();
                 } else {
@@ -235,7 +239,7 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
             }
         }
         if awake && ready && ui.page == Page::Home && !ui.settings_open && now >= next_frame {
-            // HOME animates the pet (8-15 fps); other pages redraw once a second.
+            // HOME animates the pet (5-12.5 fps); other pages redraw once a second.
             next_frame = now + ui.pet.frame_ms();
             need_draw = true;
         }
@@ -256,7 +260,13 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
                 let m = shared.model.lock().unwrap_or_else(|e| e.into_inner());
                 ui.render(&mut canvas, &m);
             }
-            display.present(&canvas)?;
+            // HOME at rest redraws 8 times a second and most of those frames
+            // are identical. The panel keeps its image without commits (it
+            // does for hours while dark), so only a change is committed.
+            if first || canvas.px != shown {
+                display.present(&canvas)?;
+                shown.clone_from(&canvas.px);
+            }
             need_draw = false;
             if first {
                 // A QPIC modeset can reset the backlight: light it only after a
@@ -299,8 +309,23 @@ fn session(limit_secs: Option<u64>) -> std::io::Result<()> {
                 revents: 0,
             },
         ];
+        // Block until the next deadline: the heartbeat and the once-a-second
+        // work always; the splash, the settle commits and HOME's next frame
+        // while they are due. Dark, that is about one wakeup a second where
+        // a fixed 40 ms tick made 25.
+        let mut deadlines = vec![next_beat, next_second];
+        if ui.splash < SPLASH_FRAMES {
+            deadlines.push(next_splash);
+        }
+        if let Some(at) = settle.first() {
+            deadlines.push(*at);
+        }
+        if awake && ready && ui.page == Page::Home && !ui.settings_open {
+            deadlines.push(next_frame);
+        }
+        let timeout = poll_timeout(now_ms(), &deadlines, key.held() || touch.active());
         // SAFETY: polling two fds we own.
-        let r = unsafe { libc::poll(fds.as_mut_ptr(), 2, 40) };
+        let r = unsafe { libc::poll(fds.as_mut_ptr(), 2, timeout) };
         if r < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
             break Err(std::io::Error::last_os_error());
         }

@@ -206,6 +206,11 @@ impl PowerKey {
         }
     }
 
+    /// Held and not yet a long press: its hold is still being timed.
+    pub fn held(&self) -> bool {
+        self.pressed.is_some() && !self.fired
+    }
+
     /// Call periodically with the same clock as the event stamps.
     pub fn poll(&mut self, now: i64) -> Option<Press> {
         let t0 = self.pressed?;
@@ -215,6 +220,19 @@ impl PowerKey {
         }
         None
     }
+}
+
+/// How long the main loop may block in poll(): until the earliest of
+/// `deadlines`, at most a second, and at most 40 ms while a touch or a
+/// power-key hold is being timed. Input wakes poll() at once either way, so a
+/// long wait costs no responsiveness.
+pub fn poll_timeout(now: i64, deadlines: &[i64], timing_input: bool) -> i32 {
+    let cap = if timing_input { 40 } else { 1000 };
+    deadlines
+        .iter()
+        .map(|d| d - now)
+        .fold(cap, i64::min)
+        .clamp(0, cap) as i32
 }
 
 #[cfg(target_os = "linux")]
@@ -367,6 +385,31 @@ pub mod dev {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poll_waits_for_the_earliest_deadline_within_bounds() {
+        // Dark: only the heartbeat and the once-a-second work are due.
+        assert_eq!(poll_timeout(1_000, &[1_700, 1_900], false), 700);
+        // Lit on HOME: the next animation frame comes first.
+        assert_eq!(poll_timeout(1_000, &[1_700, 1_900, 1_066], false), 66);
+        // Never more than a second, never negative for a missed deadline.
+        assert_eq!(poll_timeout(1_000, &[9_000], false), 1000);
+        assert_eq!(poll_timeout(1_000, &[900], false), 0);
+        assert_eq!(poll_timeout(1_000, &[], false), 1000);
+        // A touch or a power-key hold is timed every 40 ms.
+        assert_eq!(poll_timeout(1_000, &[1_700], true), 40);
+        assert_eq!(poll_timeout(1_000, &[1_010], true), 10);
+    }
+
+    #[test]
+    fn a_held_power_key_is_timed_until_it_fires() {
+        let mut k = PowerKey::default();
+        assert!(!k.held());
+        k.pressed = Some(0);
+        assert!(k.held());
+        assert_eq!(k.poll(HOLD_MS), Some(Press::Long));
+        assert!(!k.held());
+    }
 
     fn axis() -> (Axis, Axis) {
         (Axis { min: 0, max: 319 }, Axis { min: 0, max: 479 })
