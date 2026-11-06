@@ -21,7 +21,7 @@ use crate::storage::atomic_write;
 use crate::ubus;
 use crate::util::MutexExt;
 
-const CONFIG: &str = "/data/local/tmp/sms_forward.json";
+pub(crate) const CONFIG: &str = "/data/local/tmp/sms_forward.json";
 const POLL: Duration = Duration::from_secs(20);
 const RETRY_AFTER_ERROR: Duration = Duration::from_secs(120);
 const BATCH: u32 = 30;

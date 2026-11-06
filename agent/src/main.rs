@@ -112,8 +112,12 @@ fn read_startup_export(key: &str) -> Option<String> {
     })
 }
 
-/// One-shot cleanup for features removed from the agent (DoH proxy, SMS
-/// forwarder, job scheduler).
+/// One-shot cleanup for features removed from the agent (DoH proxy, the old
+/// SMS forwarder's state file, job scheduler).
+///
+/// `sms_forward.json` is deliberately not in the orphan list: the current SMS
+/// forwarder (`sms_forward.rs`) keeps its live config at that path, and
+/// deleting it here silently turned forwarding off on every agent start.
 ///
 /// The DoH part matters: enabling DoH pointed dnsmasq at the agent's own
 /// resolver on 127.0.0.1:5353, and the module that undid that is gone. Without
@@ -138,11 +142,23 @@ fn migrate_drop_removed_features() {
         let _ = std::fs::remove_file(DOH_CONFIG);
     }
 
-    for orphan in [
-        "/data/local/tmp/sms_forward.json",
-        "/data/local/tmp/sms_forward_state.json",
-        "/data/local/tmp/scheduler.json",
-    ] {
+    for orphan in REMOVED_FEATURE_FILES {
         let _ = std::fs::remove_file(orphan);
+    }
+}
+
+/// State files of removed features, deleted at every start.
+const REMOVED_FEATURE_FILES: &[&str] = &[
+    "/data/local/tmp/sms_forward_state.json",
+    "/data/local/tmp/scheduler.json",
+];
+
+#[cfg(test)]
+mod tests {
+    use super::REMOVED_FEATURE_FILES;
+
+    #[test]
+    fn removed_feature_cleanup_spares_live_sms_forward_config() {
+        assert!(!REMOVED_FEATURE_FILES.contains(&crate::sms_forward::CONFIG));
     }
 }
