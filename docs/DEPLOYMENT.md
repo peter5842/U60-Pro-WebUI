@@ -223,7 +223,7 @@ ssh -p 2222 root@192.168.0.1 'sh /data/local/tmp/start_dashboard.sh; cat /tmp/da
 
 ### Device-side guards (installed by hand)
 
-Two background shell loops run on the device outside the agent. The deploy
+Three background shell loops run on the device outside the agent. The deploy
 scripts do not install them; copy them to `/data/local/tmp/` and start each from
 its own `/etc/rc.local` line, ahead of `exit 0` (run `sh -n /etc/rc.local`
 afterwards):
@@ -232,14 +232,28 @@ afterwards):
 |---|---|---|
 | `scripts/device/net-time-guard.sh` | `/data/local/tmp/net_time_guard.sh` | `sh /data/local/tmp/net_time_guard.sh >/dev/null 2>&1 &` |
 | `scripts/device/smart-manage-guard.sh` | `/data/local/tmp/smart_manage_guard.sh` | `sh /data/local/tmp/smart_manage_guard.sh >/dev/null 2>&1 &` |
+| `scripts/device/band-guard.sh` | `/data/local/tmp/band_guard.sh` | `sh /data/local/tmp/band_guard.sh >/dev/null 2>&1 &` |
 
 `net-time-guard` keeps LAN IPv6 off and the kernel clock on UTC
 ([AGENT.md](AGENT.md)); `smart-manage-guard` restarts the leaking
 `zte_smart_manage` past 256 MB RSS ([SAFETY.md](SAFETY.md)). They log to
 `/tmp/net_time_guard.log` and `/tmp/smart_manage_guard.log`. Like the other
-rc.local lines, both are lost on FOTA. A running loop keeps the old script
-until it is restarted, so after copying a new version stop the old process
-and start the new one (or reboot).
+rc.local lines, all three are lost on FOTA. A running loop keeps the old
+script until it is restarted, so after copying a new version stop the old
+process and start the new one (or reboot).
+
+`band-guard` keeps the NR SA band list at n41+n79 so the carrier cannot park
+the modem on the narrow n28 cell, and puts the full list back when the modem
+cannot stay there (then n28, and LTE if the network mode is `WL_AND_5G`); it
+climbs back on a timer with backoff. It uses only `zte_nwinfo_api`
+netinfo/bandlock, leaves a band list chosen by hand in the dashboard alone,
+and is switched off with `touch /data/local/tmp/band_guard.off`. The full
+list it restores is read from `/data/local/tmp/band_guard.full` (the
+device's own unlocked list, one line), with the firmware's SA bands as the
+default. It logs changes to `/tmp/band_guard.log` and its current state to
+`/tmp/band_guard.state`. A stopped instance leaves a `sleep` holding its
+single-instance lock for up to 10 s, so wait that long before starting the
+new one.
 
 ---
 
